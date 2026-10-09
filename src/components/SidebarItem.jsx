@@ -3,12 +3,14 @@ import { Link } from "react-router-dom";
 /**
  * A single navigation row in the sidebar.
  *
- * Renders a react-router <Link> when `to` is provided, otherwise a <button>
- * for toggle-style controls. When the sidebar is collapsed the label is hidden
- * visually and the accessible name is carried by `label` + `title` (tooltip).
+ * Renders a react-router <Link> when `to` is provided, an external <a> when
+ * `href` is provided, otherwise a <button> for toggle-style controls. When the
+ * sidebar is collapsed the label is hidden visually and the accessible name is
+ * carried by `label` + `title` (tooltip).
  */
 export default function SidebarItem({
   to,
+  href,
   label,
   icon: Icon,
   badge,
@@ -42,7 +44,7 @@ export default function SidebarItem({
     );
   }
 
-  if (!to) {
+  if (!to && !href) {
     return (
       <button
         type="button"
@@ -58,6 +60,28 @@ export default function SidebarItem({
         <span className="sb-item-label">{label}</span>
         {badge != null ? <span className="sb-item-badge">{badge}</span> : null}
       </button>
+    );
+  }
+
+  if (href) {
+    return (
+      <a
+        className={classes}
+        href={href}
+        onClick={onClick}
+        aria-label={ariaLabel}
+        title={tooltip}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {Icon ? (
+          <span className="sb-item-icon" aria-hidden="true">
+            <Icon size={18} strokeWidth={2} />
+          </span>
+        ) : null}
+        <span className="sb-item-label">{label}</span>
+        {badge != null ? <span className="sb-item-badge">{badge}</span> : null}
+      </a>
     );
   }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
+  Award,
   BookMarked,
   BookOpen,
   ChevronsLeft,
@@ -11,7 +12,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { CODE_LINKS, SITE, YEARS } from "../data/site.js";
+import { CODE_LINKS, LINKS, SITE, YEARS } from "../data/site.js";
 import { useSidebar } from "./SidebarContext.jsx";
 import SidebarItem from "./SidebarItem.jsx";
 
@@ -201,6 +202,14 @@ export default function Sidebar() {
           })}
 
           <p className="sidebar-section-label">More</p>
+
+          <SidebarItem
+            href={LINKS.guaranteeQns}
+            label="Guaranteed Questions"
+            icon={Award}
+            collapsed={collapsed}
+            title="Guaranteed Questions (opens in a new tab)"
+          />
 
           <SidebarItem
             to={NAV.code.to}

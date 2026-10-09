@@ -18,6 +18,7 @@ import {
 } from "../data/site.js";
 import SearchBar from "../components/SearchBar.jsx";
 import Footer from "../components/Footer.jsx";
+import QuestionSetsSection from "../components/QuestionSetsSection.jsx";
 
 const QUICK_LINKS = [
   {
@@ -130,6 +131,8 @@ export default function Home() {
           })}
         </div>
       </section>
+
+      <QuestionSetsSection />
 
       <section className="section">
         <div className="section-head">

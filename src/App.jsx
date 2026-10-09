@@ -13,6 +13,7 @@ import YearSubjects from "./pages/YearSubjects.jsx";
 import LearnCode from "./pages/LearnCode.jsx";
 import SubjectPage from "./pages/SubjectPage.jsx";
 import SearchPage from "./pages/SearchPage.jsx";
+import QuestionsPage from "./pages/QuestionsPage.jsx";
 import NotFound from "./pages/NotFound.jsx";
 
 function Layout() {
@@ -59,6 +60,7 @@ export default function App() {
               <Route path="/code" element={<LearnCode />} />
               <Route path="/subject/:groupId/:folderId" element={<SubjectPage />} />
               <Route path="/search" element={<SearchPage />} />
+              <Route path="/questions/:category" element={<QuestionsPage />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
