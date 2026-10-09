@@ -2,6 +2,7 @@ import { Routes, Route, Outlet, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import Header from "./components/Header.jsx";
+import SearchShortcut from "./components/SearchShortcut.jsx";
 import { SidebarProvider, useSidebar } from "./components/SidebarContext.jsx";
 import { ModalProvider } from "./components/ModalContext.jsx";
 import { ToastProvider } from "./components/ToastContext.jsx";
@@ -21,8 +22,8 @@ function Layout() {
   useEffect(() => {
     document.title =
       pathname === "/"
-        ? "LECTURE NOTES | B.Tech CSE & AIML Study Material"
-        : "LECTURE NOTES";
+        ? "JNTUH Notes | B.Tech CSE & AIML Study Material"
+        : "JNTUH Notes";
   }, [pathname]);
 
   const shellClass =
@@ -33,6 +34,7 @@ function Layout() {
   return (
     <div className={shellClass}>
       <ScrollToTop />
+      <SearchShortcut />
       <Sidebar />
       <div className="app-main">
         <Header />

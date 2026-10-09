@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, FileQuestion } from "lucide-react";
 import { getResourceByFolderId, getYear } from "../data/site.js";
 import SubjectCard from "../components/SubjectCard.jsx";
+import Footer from "../components/Footer.jsx";
 import NotFound from "./NotFound.jsx";
 
 export default function YearSubjects() {
@@ -62,6 +63,8 @@ export default function YearSubjects() {
           Back to year selection
         </Link>
       </div>
+
+      <Footer />
     </main>
   );
 }

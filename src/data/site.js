@@ -35,7 +35,7 @@ export const SITE = {
   // `developer` is the visible developer attribution shown in the sidebar and
   // footer. Rebranded from "JASHVA" to "Jagadish" as requested.
   developer: "Jagadish",
-  heading: "LECTURE NOTES",
+  heading: "JNTUH Notes",
   tagline: "Free Learning Platform for Better Result",
   meta: [
     "Course: B.Tech",

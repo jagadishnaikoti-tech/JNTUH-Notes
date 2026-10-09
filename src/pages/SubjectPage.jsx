@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, FolderOpen, Inbox, TriangleAlert } from "lucide-react";
 import { getResourceByFolderId, getYear } from "../data/site.js";
 import FileTree from "../components/FileTree.jsx";
+import Footer from "../components/Footer.jsx";
 import PdfViewer from "../components/PdfViewer.jsx";
 
 function formatBytes(bytes) {
@@ -126,6 +127,8 @@ export default function SubjectPage() {
       {preview ? (
         <PdfViewer file={preview} onClose={() => setPreview(null)} />
       ) : null}
+
+      <Footer />
     </main>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   BookMarked,
   BookOpen,
@@ -8,14 +8,11 @@ import {
   Code2,
   GraduationCap,
   Home,
-  LogOut,
   Search,
   X,
 } from "lucide-react";
 import { CODE_LINKS, SITE, YEARS } from "../data/site.js";
 import { useSidebar } from "./SidebarContext.jsx";
-import { useCopyrightModal } from "./ModalContext.jsx";
-import { useToast } from "./ToastContext.jsx";
 import SidebarItem from "./SidebarItem.jsx";
 
 const SUBJECT_PATH = /^\/subject\/([^/]+)\/([^/]+)/;
@@ -30,7 +27,6 @@ const NAV = {
 
 export default function Sidebar() {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
   const {
     collapsed,
     mobileOpen,
@@ -38,19 +34,6 @@ export default function Sidebar() {
     toggleCollapsed,
     expand,
   } = useSidebar();
-  const openCopyright = useCopyrightModal();
-  const showToast = useToast();
-
-  const onSignOut = () => {
-    try {
-      localStorage.clear();
-    } catch {
-      /* storage may be unavailable */
-    }
-    closeMobile();
-    navigate("/");
-    showToast("You are signed out. This site is free \u2014 no account is needed.");
-  };
 
   const subjectMatch = SUBJECT_PATH.exec(pathname);
   const activeFolderId = subjectMatch ? subjectMatch[2] : null;
@@ -115,7 +98,7 @@ export default function Sidebar() {
         aria-label="Main navigation"
       >
         <div className="sidebar-brand">
-          <Link className="sidebar-brand-inner" to="/" title="LECTURE NOTES — Home">
+          <Link className="sidebar-brand-inner" to="/" title={`${SITE.heading} — Home`}>
             <span className="sidebar-brand-mark" aria-hidden="true">
               <BookOpen size={22} strokeWidth={2} />
             </span>
@@ -253,16 +236,6 @@ export default function Sidebar() {
           <p className="sb-attribution">
             <span className="sb-attribution-text">Developed by </span>
             <span className="sb-attribution-name">Jagadish</span>
-          </p>
-          <p className="sb-attribution sb-attribution-links">
-            <button type="button" className="link-btn" onClick={openCopyright}>
-              Credits
-            </button>
-            <span aria-hidden="true">·</span>
-            <button type="button" className="link-btn" onClick={onSignOut}>
-              <LogOut size={13} aria-hidden="true" />
-              Sign out
-            </button>
           </p>
           <button
             type="button"

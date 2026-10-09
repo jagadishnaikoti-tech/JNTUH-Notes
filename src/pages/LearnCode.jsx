@@ -47,7 +47,7 @@ export default function LearnCode() {
         </Link>
       </div>
 
-      <Footer feedback />
+      <Footer />
     </main>
   );
 }

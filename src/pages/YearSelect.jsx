@@ -7,6 +7,7 @@ import {
   GraduationCap,
 } from "lucide-react";
 import { LINKS, YEARS, getYearStats } from "../data/site.js";
+import Footer from "../components/Footer.jsx";
 
 export default function YearSelect() {
   return (
@@ -14,7 +15,7 @@ export default function YearSelect() {
       <section>
         <div className="section-head">
           <div>
-            <p className="eyebrow">Lecture Notes</p>
+            <p className="eyebrow">JNTUH Notes</p>
             <h1 className="section-title" style={{ fontSize: "var(--text-3xl)" }}>
               Select Year
             </h1>
@@ -133,6 +134,8 @@ export default function YearSelect() {
           Back
         </Link>
       </div>
+
+      <Footer />
     </main>
   );
 }
