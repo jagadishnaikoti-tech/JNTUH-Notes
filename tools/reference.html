@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" integrity="sha384-JcKb8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" crossorigin="anonymous">
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js" integrity="sha384-9/reFTGAW83EW2RDu2S0VKaIzap3H66lZH81PoYlFhbGU+6BZp6G7niu735Sk7lN" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js" integrity="sha384-B4gt1jrGC7Jh4AgTPSdUtOBvfO8shuf57BaghqFfPlYxofvL8/KUEfYiJOMMV+rV" crossorigin="anonymous"></script>
+    <script src="https://kit.fontawesome.com/3f936ccb0f.js" crossorigin="anonymous"></script>
+    <style>
+        #sectionyr,
+        #sectionsub,
+        #sectionsub2,
+        #sectionsub3,
+        #sectionsub4,
+        #sectioncode {
+            display: none;
+        }
+    </style>
+    <style>
+        .butt,
+        .buttonn,
+        .button1,
+        .button {
+            transition: transform 0.2s ease-in-out;
+        }
+
+        .butt:hover,
+        .buttonn:hover,
+        .button1:hover,
+        .button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        #sectionyr,
+        #sectionsub,
+        #sectionsub2,
+        #sectionsub3,
+        #sectionsub4,
+        #sectioncode {
+            display: none;
+        }
+    </style>
+    <style>
+        body {
+            background: linear-gradient(to right, #007bff, #00c6ff);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .login-container {
+            max-width: 500px;
+            margin: 100px auto;
+            padding: 40px 30px;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            animation: fadeIn 1s ease-in-out;
+        }
+
+        .form-title {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        label {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-control:focus {
+            border-color: #007bff;
+            box-shadow: 0 0 0 0.15rem rgba(0, 123, 255, 0.25);
+        }
+
+        .btn-login {
+            width: 100%;
+            font-weight: bold;
+            padding: 10px;
+            margin-top: 10px;
+        }
+
+        .greeting {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: #007bff;
+            text-align: center;
+            margin-top: 15px;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+<link rel="stylesheet" href="index.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" >
+<meta name="robots" content="none,noarchive"/>
+</head>
+
+<body>
+
+    <closee>
+        <home>
+            <div id="sectionHome">
+                <div class="bgclr">
+                    <div class="row">
+                        <div class="col-12">
+                            <nav class="shadow navbar navbar-expand-lg navbar-dark bg-dark">
+                                <a class="navbar-brand" href="#">Welcome <span id="navName">👋</span></a>
+                                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarTogglerDemo02" aria-controls="navbarTogglerDemo02" aria-expanded="false" aria-label="Toggle navigation">
+                                    <span class="toggler-icon">☰</span>
+                                </button>
+
+                                <div class="collapse navbar-collapse" id="navbarTogglerDemo02">
+                                    <ul class="navbar-nav mr-auto mt-2 mt-lg-0">
+                                        <li class="nav-item active">
+                                            <a class="nav-link" href="#">Prepare Well - All the Best 👍💯 <span class="sr-only">(current)</span></a>
+                                        </li>
+                                        <li class="nav-item active">
+                                            <a class="nav-link" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text=Hey,--I-found-this-LINK-It's-very-helpful-for-our-Exam-Preparation-📌https://cselnr223.ccbp.tech/">Share on Whatsapp</a>
+                                        </li>
+                                        <li class="nav-item active">
+                                            <a class="nav-link" href="https://wa.link/4q29q4" target="_blank" rel="noopener noreferrer">Give us Feedback</a>
+                                        </li>
+                                        <li class="nav-item active">
+                                            <a class="nav-link" href="https://wa.link/0zayru" target="_blank" rel="noopener noreferrer">Update Pdfs</a>
+                                        </li>
+                                        <li class="nav-item active">
+                                            <button class="btn btn-outline-light ml-auto" id="logoutBtn">Logout</button>
+                                        </li>
+                                    </ul>
+                                    <form class="form-inline my-2 my-lg-0">
+                                        <input class="form-control mr-sm-2" type="search" placeholder="Don't Stress. Do your Best. Forget the Rest.">
+                                        <a class="btn btn-outline-success my-2 my-sm-0" type="submit" type="text" class="clrn" data-toggle="modal" data-target="#exampleModal">JASHVA</a>
+                                    </form>
+                                </div>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-md-6 d-flex flex-column justify-content-center">
+                            <h1 class="h3 shadow m-5">LECTURE NOTES</h1>
+                            <p class="clrnssc">Free Learning Platform for Better Result</p>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="d-flex flex-row justify-content-center">
+                                <ul class="h4">
+                                    <li> Course: B.Tech </li>
+                                    <li> Branch: CSE & AIML</li>
+                                    <li> Regulation: R22 </li>
+                                    <li> Board: JNTUH </li>
+                                </ul>
+                            </div>
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button onclick="display('sectionyr')" class="butt">Get Started</button>
+                            </div>
+
+
+
+
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="rbutt"><a target="_blank" rel="noopener noreferrer" href="https://jntuhresults.vercel.app/academicresult">Check Results</a></button>
+                            </div>
+
+
+                        </div>
+
+                        <div class="col-12">
+                            <div class="d-flex flex-column justify-content-end">
+                                <hr />
+                                <p class="footer">Developed by
+                                    <a type="text" class="clrn" data-toggle="modal" data-target="#exampleModal"> JASHVA </a>
+                                </p>
+
+                                <div class="modal fade" id="exampleModal" tabindex="-1" aria-labelledby="exampleModalLabel" aria-hidden="true">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title" style="font-weight:bold; font-size: 20px;" id="exampleModalLabel">COPYRIGHTS ©</h5>
+                                                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                                    <span aria-hidden="true">&times;</span>
+                                                </button>
+                                            </div>
+                                            <div class="modal-body">
+                                                Hello...👋 </br> This is <a href="https://linktr.ee/faith_enhancer" class="clrn">JASHVA</a> </br> Currently Pursing B.Tech in St.Mary's Engineering College - Hyd.
+                                                <hr />
+                                                Copyright © 2023 VARUN & HARISH - All Rights Reserved </br>
+                                                <hr /> Helped by Nagaraju & Abhilash </br>
+                                                <hr /> Supported by St.Mary's Engineering College - Deshmukhi, Hyd.
+                                                <hr />
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                                                <a type="button" class="btn btn-primary" target="_blank" rel="noopener noreferrer" href="https://wa.link/4q29q4">Give us Feedback</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </home>
+
+        <selectyr>
+            <div id="sectionyr">
+                <div class="bgclr">
+                    <div class="row">
+                        <div class="col-12">
+                            <h2 class="hmggg"> Select Year </h2>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button onclick="display('sectionsub')" class="buttonn"> 1st Year </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button onclick="display('sectionsub2')" class="buttonn"> 2nd Year </button>
+                            </div>
+
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button onclick="display('sectionsub3')" class="buttonn"> 3rd Year </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button onclick="display('sectionsub4')" class="buttonn"> 4th Year </button>
+                            </div>
+
+
+
+
+
+
+                            <hr />
+                        </div>
+
+
+
+
+
+                        <div class="col-12 col-md-6">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="bbuttonn" onclick="display('sectioncode')">LEARN CODE</button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="bbuttonn"> <a target="_blank" rel="noopener noreferrer" class="cclrnn" href="https://jntuh-iq.vercel.app/"> GUARNTEE QNS </a> </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="bbuttonn"> <a target="_blank" rel="noopener noreferrer" class="cclrnn" href="http://t.me/CSE_Helper_bot"> CSE Pdfs bot </a> </button>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <p class="clrnsss">Note: For More pdf's click above CSE Pdfs bot</p>
+                            <div class="d-flex flex-row justify-content-center">
+                                <a href="https://drive.google.com/drive/folders/14BR8ItAGLYSSvvVkDiDMQH9HdM_M91od?usp=sharing" target="_blank" rel="noopener noreferrer" class="clrnss">R18 pdf's</a>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <a href="https://drive.google.com/drive/folders/1kl723nNIZpQqBS5PkMpyARN-Nex1spwT" target="_blank" rel="noopener noreferrer" class="clrnss">R22 Syllabus Copy CSE & AIML</a>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button onclick="display('sectionHome')" class="butt">BACK</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </selectyr>
+
+        <LEARNcode>
+            <div id="sectioncode">
+                <div class="bgclr">
+                    <div class="row">
+                        <div class="col-12 ">
+                            <h2 class="hmggg">Explore the Tech World</h2>
+                            <div class="d-flex flex-row">
+                                <button onclick="display('sectionyr')" class="buttt m-2">➡</button>
+                                <h1 class="h5 ml-4"> CODING</h1>
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button1"> <a target="_blank" rel="noopener noreferrer" href="https://drive.google.com/drive/folders/1iRu-rmlZXdMYuPjlustJ-WuZ8diGOMLx" class="clrnn">NOTES</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button1"> <a target="_blank" rel="noopener noreferrer" href="https://roadmap.sh/" class="clrnn">ROAD-MAP</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button1"> <a target="_blank" rel="noopener noreferrer" href="https://drive.google.com/drive/folders/1hfjcoHPZkwjHuXB08mlyDvzDeOClxKiA" class="clrnn">INTERVIEW QN's</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button1"> <a target="_blank" rel="noopener noreferrer" href="https://www.codsoft.in/" class="clrnn">INTERNSHIP </a></a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button1"> <a target="_blank" rel="noopener noreferrer" href="https://drive.google.com/drive/folders/1iC3GyREkftJT-3l37Uz1cWDXFxW8y72l" class="clrnn">PROJECTS</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button1"> <a href="https://drive.google.com/drive/u/0/mobile/folders/1SkCOcAS0Kqvuz-MJkkjbFr1GSue6Ms6m" class="clrnn">PLACEMENT</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button1"> <a target="_blank" rel="noopener noreferrer" href="https://www.codechef.com/ide" class="clrnn">PRACTICE</a>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="col-12">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button onclick="display('sectionHome')" class="butt">BACK</button>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="d-flex flex-column justify-content-end">
+                                <hr />
+                                <p class="clrnsss">Give us
+                                    <a type="text" class="clrn" target="_blank" rel="noopener noreferrer" href="https://wa.link/75g1md"> FEEDBACK </a>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="d-flex flex-column justify-content-end">
+                                <hr />
+                                <p class="footer">Developed by
+                                    <a type="text" class="clrn" target="_blank" rel="noopener noreferrer" href="https://linktr.ee/faith_enhancer"> JASHVA </a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </LEARNcode>
+
+        <year1>
+            <div id="sectionsub">
+                <div class="bgclr">
+                    <div class="row">
+                        <div class="col-12 ">
+                            <h2 class="hmggg">1st Year</h2>
+                            <div class="d-flex flex-row">
+                                <button onclick="display('sectionyr')" class="buttt m-2">➡</button>
+                                <h1 class="h5 ml-4"> SUBJECTS </h1>
+                            </div>
+                        </div>
+
+                        <div class="col-6 ">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1LHPX3Zo-lAi-YL5wf2IA4KSMGIQe8AJq" class="clrnn">M1 M2</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1MSTFxfF1nUJ3V38BEma61qkuWqEulPaY" class="clrnn">PPS</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1MMb2UQI0jHKbUzih_1OX5HQ226RBXVn2" class="clrnn">AP</a>
+                                </button>
+                            </div>
+
+
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1MK5DdUXW5ME-DnMW8_MYVZOKpsD2RB4u" class="clrnn">ENG</a>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="col-6">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1glYohtTM6ptEudoYwCNKynlAigwInTjV" class="clrnn">BEE</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1MMD0rjnv2SKQVp6b5B6AfdMpT56H2DSN" class="clrnn">EDC</a>
+                                </button>
+                            </div>
+
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1dlu9hJ44vAbprx3_dxKuuU0_TlZR1prM" class="clrnn">CAEG</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1hY5rckMoFJ5LXwyLK2gng0028fIi2n2d" class="clrnn">CHEM</a>
+                                </button>
+                            </div>
+                        </div>
+
+
+
+                        <div class="col-12">
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <a href="https://drive.google.com/drive/folders/1KzasgqcGh6_MCwjWqSAnB8wG8p_7TK8N" class="clrnss">Important Questions</a>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <a href="https://drive.google.com/drive/folders/1KVB3WUBf_3UPhNfTdREIuJIutbDBoKcU" class="clrnss">R22 Previous Question Papers</a>
+                            </div>
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button onclick="display('sectionyr')" class="butt">BACK</button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </year1>
+
+        <year2>
+            <div id="sectionsub2">
+                <div class="bgclr">
+                    <div class="row">
+                        <div class="col-12 ">
+                            <h2 class="hmggg">2nd Year</h2>
+                            <div class="d-flex flex-row">
+                                <button onclick="display('sectionyr')" class="buttt m-2">➡</button>
+                                <h1 class="h5 ml-4"> SUBJECTS </h1>
+                            </div>
+                        </div>
+
+                        <div class="col-4">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1qovgGl6Bja24HNj4oU5-UbgX8ZTkCYBT" class="clrnn">COSM</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1-gRtgAuWPug55MP_AXDjtsF26isQXgcr" class="clrnn">MSF</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1eea3CbX7MzOdPWLyOscOLzzsGw2vaOjO" class="clrnn">DM</a> </button>
+                            </div>
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1l6U_FcgXlFrZZMnY-Gr6RlqsMZoJCQnU" class="clrnn">COA</a>
+                                </button>
+                            </div>
+
+
+                        </div>
+
+                        <div class="col-4">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1r88phLO0j5IGMeVVd2FBgisCV4iXPLQ6" class="clrnn">JAVA</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1eWfZteUvaRuD89F8BWibCIlzXAhdjqBv" class="clrnn">DBMS</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1e_q_ht8AoMKyDueW9Usx0mncNkYuxVpB" class="clrnn">BEFA</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1q7HdV5CLtxLxa345e8I99fgvlDWp8VK1" class="clrnn">LABS</a>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="col-4">
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1bUhmQUZdgItKXcLjldk2IUcdBxzVjC9v" class="clrnn">OS</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1r-u9MooJE4rhU3zVG-cxVdlg6IlIe1bo" class="clrnn">DS</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1jZ6H30aoBW8ahs_3T31FNI6_Q42qi6zL" class="clrnn">DE</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1edJbs_nkbRazcOMq40SalMPsoeOBrlLr" class="clrnn">SE</a>
+                                </button>
+                            </div>
+
+                        </div>
+                        <div class="col-12">
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <a href="https://drive.google.com/drive/folders/1LiHRY7B1Z0cHOzcdEhNqs-VPSCZ3m5eE" class="clrnss">Important Questions</a>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <a href="https://drive.google.com/drive/folders/1Z7v6X66tgtpXGdsBiCWH1JyYcVjPbS-W" class="clrnss">R22 Previous Question Papers</a>
+                            </div>
+
+                        </div>
+                    </div>
+                    <div class="d-flex flex-row justify-content-center">
+                        <button onclick="display('sectionyr')" class="butt">BACK</button>
+                    </div>
+
+
+                </div>
+            </div>
+        </year2>
+
+        <year3>
+            <div id="sectionsub3">
+                <div class="bgclr">
+                    <div class="row">
+                        <div class="col-12 ">
+                            <h2 class="hmggg">3rd Year</h2>
+                            <div class="d-flex flex-row">
+                                <button onclick="display('sectionyr')" class="buttt m-2">➡</button>
+                                <h1 class="h5 ml-4"> SUBJECTS </h1>
+                            </div>
+                        </div>
+
+                        <div class="col-4">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1lhYUvMBiY3KXrfFo5HjiT-PjsejmbhF1" class="clrnn">DevOps</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1ljY1MgcWGVLCZ9hRHNaPffYa0JAuCD8y" class="clrnn">DAA</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1lqKeHxfc0AR3Nn0q-O1SzQkm3AD1PIh0" class="clrnn">IRS</a>
+                                </button>
+                            </div>
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/12Rr0_pvh3pJWvg1UWjQb2NX7e2jXdrIQ" class="clrnn">IDS</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/12e1jTNZFWOxHlfAaX_g0FHN3Yiz_sU6a" class="clrnn">PPL</a>
+                                </button>
+                            </div>
+
+                        </div>
+
+                        <div class="col-4">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1e_q_ht8AoMKyDueW9Usx0mncNkYuxVpB" class="clrnn">BEFA</a>
+                                </button>
+                            </div>
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1lsJyrJhGlcIfXUe5Sn-iE3Eb8sVAI8DJ" class="clrnn">NLP</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1YP1SAL7zZjcdeC0JxTkmJUptgyAQ2ZGT" class="clrnn">CN</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1mDkgkoRPkZD5ytOTBW0p53OzqzblqXEs" class="clrnn">DA</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1-tBXNf1a4ISX9AkMwWRj7xuG10_352iu" class="clrnn">LABS</a>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="col-4">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1-q9IOoAkQR2V70BVG2aUa-iKQGDlIBN_" class="clrnn">FLAT</a>
+                                </button>
+                            </div>
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1TfETCJGWxza9kjmWX4fFNO__-CPYWE_-" class="clrnn">FIoT</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1aBzCZfpY_F581eAykLENupZJw2pm52HH" class="clrnn">STM</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1UILdNkRttSnuF2hm4PBSx8pxr98yBrlm" class="clrnn">AI</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1alQr3MBfFrvDiWlazlZG3OK6SxVDVO_o" class="clrnn">ML</a>
+                                </button>
+                            </div>
+                        </div>
+
+
+                    </div>
+                    <div class="d-flex flex-row justify-content-center">
+                        <button onclick="display('sectionyr')" class="butt">BACK</button>
+                    </div>
+
+
+                </div>
+            </div>
+        </year3>
+
+        <year4>
+            <div id="sectionsub4">
+                <div class="bgclr">
+                    <div class="row">
+                        <div class="col-12 ">
+                            <h2 class="hmggg">4th Year</h2>
+                            <div class="d-flex flex-row">
+                                <button onclick="display('sectionyr')" class="buttt m-2">➡</button>
+                                <h1 class="h5 ml-4"> SUBJECTS </h1>
+                            </div>
+                        </div>
+
+                        <div class="col-4">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1j8u9QNyJW8zaxvAELcF3XYzlwDWaYd-F" class="clrnn">CC</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1Mlbzz1UNUO5FS8bfL55OxpxykXB6RfHx" class="clrnn">CD</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1yGGOR788SIzVHM8atbVnobpUxNhZqmBA" class="clrnn">CNS</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1yiRAlVSzGM_TiJSsDcWvDyGTeLyKhL1H" class="clrnn">SMS</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1XUvv8sY_y2WIB1RsO-jWL-mI24eOCa1A" class="clrnn">NIC</a>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="col-4">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/15IaErt4Pi1vtVAHtnd6r4vbdCYwbAaOA" class="clrnn">SPPM</a>
+                                </button>
+                            </div>
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1rqbVb9wSJoT30ZGlJV2I2owMHg9ihosC" class="clrnn">IEM</a>
+                                </button>
+                            </div>
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1anmRW-42q2pKq5aTRevQn3ByCdPSxfkq" class="clrnn">MC</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="" class="clrnn">SVP</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1D-aRww0SoLhHEXSQdxsCznVzkIMZKuP8" class="clrnn">LABS</a>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="col-4">
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1OfFe53uahO3EeQCjuCWHiXZYyUoRpd0r" class="clrnn">OB</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1XQlOln8RYt46xYq5S5IP0JMvZDopFW_7" class="clrnn">ED</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1sMLTYGHHBRkf8dXGrC0YE7QwDqEg-hiR" class="clrnn">DS</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1YBiikSiTlHxgi2dLQ7vXR7EwdEWcllCJ" class="clrnn">WS</a>
+                                </button>
+                            </div>
+                            <div class="d-flex flex-row justify-content-center">
+                                <button class="button"> <a href="https://drive.google.com/drive/folders/1rpT0yWjOxLk24HFqyUfHU5ZryZcfOa-O" class="clrnn">HCI</a>
+                                </button>
+                            </div>
+                        </div>
+
+
+
+
+                        <div class="col-12">
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <a href="https://drive.google.com/drive/folders/1INd-6RhfWOEPRgpwdxDkDXUjLbwCZlh6" class="clrnss">Important Questions</a>
+                            </div>
+
+
+                            <div class="d-flex flex-row justify-content-center">
+                                <button onclick="display('sectionyr')" class="butt">BACK</button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </year4>
+
+    </closee>
+    <script type="text/javascript" src="https://d1tgh8fmlzexmh.cloudfront.net/ccbp-static-website/js/ccbp-ui-kit.js"></script>
+
+    <script>
+        function display(id) {
+            const sections = ['sectionHome', 'sectionyr', 'sectionsub', 'sectionsub2', 'sectionsub3', 'sectionsub4', 'sectioncode'];
+            sections.forEach(section => {
+                document.getElementById(section).style.display = 'none';
+            });
+            document.getElementById(id).style.display = 'block';
+        }
+    </script>
+<script src="index.js"></script>
+</body>
+
+</html>
