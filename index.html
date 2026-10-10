@@ -1,6 +1,25 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!-- Google tag (gtag.js) - Google Analytics 4, measurement ID G-VQGHZND2J7.
+         Placed immediately after <head> per the manual install instructions.
+         This single document is the app shell for every route, and it is also
+         the template for the prerendered route docs (see scripts/gen-seo.mjs),
+         so the tag is present on every page. Do not add a second tag. -->
+    <script
+      async
+      src="https://www.googletagmanager.com/gtag/js?id=G-VQGHZND2J7"
+    ></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag("js", new Date());
+
+      gtag("config", "G-VQGHZND2J7");
+    </script>
+
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#fffbeb" />

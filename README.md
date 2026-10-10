@@ -156,6 +156,11 @@ dynamic year, and the preserved "Developed by Jagadish" attribution.
 - `public/robots.txt` (allow-all + absolute sitemap reference),
   `public/site.webmanifest`, theme-color and accurate descriptions in
   `index.html`.
+- **Google Analytics 4** (`G-VQGHZND2J7`) is installed manually as the first
+  element in `<head>` (`index.html`). Because that file is the SPA shell *and*
+  the template for the prerendered route docs, every page ships exactly one
+  Google tag. GA4's default "Enhanced measurement → page changes based on
+  browser history events" tracks SPA route changes.
 
 ---
 
