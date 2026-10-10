@@ -3,6 +3,7 @@ import { SITE } from "../data/site.js";
 import { useSidebar } from "./SidebarContext.jsx";
 import Breadcrumbs from "./Breadcrumbs.jsx";
 import SearchBar from "./SearchBar.jsx";
+import ThemeToggle from "./ThemeToggle.jsx";
 
 export default function Header() {
   const { toggleMobile, mobileOpen } = useSidebar();
@@ -28,6 +29,8 @@ export default function Header() {
         <div className="header-search">
           <SearchBar id="header-search" compact />
         </div>
+
+        <ThemeToggle />
       </div>
     </header>
   );

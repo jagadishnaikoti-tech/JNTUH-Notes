@@ -115,6 +115,52 @@
   --z-modal: 100;
 }
 
+/* -------------------------------------------------------------------------
+   Dark theme ("study at night").
+   Same warm walnut/amber language as the light theme, inverted onto a deep
+   warm-charcoal surface. Chosen (not pure black/OLED) to stay consistent with
+   the brand; every text/background pair still meets WCAG AA (verified).
+   Applied via <html data-theme="dark">.
+   ------------------------------------------------------------------------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-primary: #c9beb0;
+  --color-on-primary: #1a1512;
+  --color-secondary: #f3b968;
+  --color-on-secondary: #1a1512;
+  --color-accent: #e08a1e;
+  --color-on-accent: #1a1512;
+  --color-background: #16120f;
+  --color-foreground: #f2ece2;
+  --color-card: #201a15;
+  --color-card-foreground: #f2ece2;
+  --color-muted: #2a221b;
+  --color-muted-foreground: #b8ab99;
+  --color-border: #33291f;
+  --color-destructive: #f87171;
+  --color-on-destructive: #1a1512;
+  --color-ring: #e08a1e;
+
+  --color-surface: #1c1611;
+  --color-border-strong: #4a3c2e;
+  --color-accent-soft: #3a2a15;
+  --color-success: #4ade80;
+  --color-success-soft: #14291b;
+  --color-warning-soft: #3a2a10;
+  --color-warning-border: #6b4e1f;
+  --color-warning-fg: #f3d9a6;
+
+  --sidebar-bg: #1d150f;
+  --sidebar-bg-elev: #271d14;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.55);
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root {
     --motion-fast: 0ms;

@@ -89,6 +89,23 @@ A left **sidebar** replaces the original horizontal navbar:
 Navigation is driven by structured data (`YEARS` + `CODE_LINKS` in
 `src/data/site.js`); nothing is hard-coded in the components.
 
+### Header
+
+The sticky top bar holds the breadcrumb trail on the left, a **centered search
+field** in the middle (full width on smaller screens), and the **light/dark
+theme toggle** on the right. On mobile the toggle and menu share the top row and
+the search moves to a full-width second row.
+
+### Light and dark mode
+
+A header toggle switches the whole palette between the warm parchment light
+theme and a warm-charcoal dark theme. The choice is stored in `localStorage`
+(`ln:theme`) and the operating-system `prefers-color-scheme` value is used until
+the user decides. An inline script in `index.html` applies the saved theme before
+the first paint (no flash), and the browser `theme-color` is kept in sync. Both
+themes are token-driven from `src/styles/tokens.css` and independently meet WCAG
+AA contrast.
+
 ### Search (`src/lib/search.js`)
 
 A local, dependency-free index over the real inventory:
@@ -157,7 +174,8 @@ src/
     Sidebar.jsx            # left sidebar (branding, nav, attribution)
     SidebarItem.jsx        # one nav row (icon + label + optional external link)
     SidebarContext.jsx     # collapse / drawer state + useMediaQuery
-    Header.jsx             # sticky top bar: menu, breadcrumbs, search
+    Header.jsx             # sticky top bar: menu, breadcrumbs, search, theme
+    ThemeToggle.jsx        # light/dark mode switch (top-right)
     Breadcrumbs.jsx        # route-aware breadcrumb trail
     SearchBar.jsx          # reusable search control -> /search?q=
     SubjectCard.jsx        # subject tile on a year page
@@ -176,6 +194,7 @@ src/
   lib/
     search.js              # local search engine
     meta.js                # per-route title + meta description
+    theme.js               # light/dark theme read + persistence
   pages/
     Home.jsx               # "/"
     YearSelect.jsx         # "/years"
@@ -249,8 +268,12 @@ subject label and year name from the reference site is present.
 - Responsive layout (mobile / tablet / desktop); the content column never scrolls
   horizontally.
 - No fabricated statistics — every count shown comes from the crawled inventory.
+- Light and dark themes both verified; the header theme toggle is a real button
+  with `aria-pressed` and an accessible label, and its state persists across
+  reloads.
 - Lighthouse (production build): **Accessibility 100 · Best Practices 100 · SEO
-  100** on the home, search and question-set pages.
+  100** on the home, search and question-set pages, in **both** light and dark
+  themes.
 
 ---
 

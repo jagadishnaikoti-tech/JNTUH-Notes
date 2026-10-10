@@ -11,6 +11,31 @@
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#fffbeb" />
 
+    <!-- Apply the saved theme before paint to avoid a flash of the wrong mode. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("ln:theme");
+          var theme =
+            stored === "dark" || stored === "light"
+              ? stored
+              : window.matchMedia &&
+                  window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          var root = document.documentElement;
+          root.setAttribute("data-theme", theme);
+          root.style.colorScheme = theme;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta)
+            meta.setAttribute(
+              "content",
+              theme === "dark" ? "#16120f" : "#fffbeb"
+            );
+        } catch (e) {}
+      })();
+    </script>
+
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
