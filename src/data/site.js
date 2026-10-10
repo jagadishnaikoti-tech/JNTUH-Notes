@@ -25,9 +25,8 @@ export const getResource = (groupId, label) =>
 
 // ---- Verbatim site chrome text -------------------------------------------
 export const SITE = {
-  brand: "Welcome",
-  brandEmoji: "\u{1F44B}",
-  navNote: "Prepare Well - All the Best \u{1F44D}\u{1F4AF}",
+  brand: "CSE & AIML · R22",
+  navNote: "Free to use. No sign-up required.",
   searchPlaceholder: "Don't Stress. Do your Best. Forget the Rest.",
   // `author` is the original copyright-credits handle preserved verbatim from
   // the reference site (shown inside the COPYRIGHTS dialog only).
@@ -36,7 +35,8 @@ export const SITE = {
   // footer. Rebranded from "JASHVA" to "Jagadish" as requested.
   developer: "Jagadish",
   heading: "JNTUH Notes",
-  tagline: "Free Learning Platform for Better Result",
+  tagline:
+    "Organised B.Tech CSE & AIML study material for the JNTUH R22 regulation.",
   meta: [
     "Course: B.Tech",
     "Branch: CSE & AIML",

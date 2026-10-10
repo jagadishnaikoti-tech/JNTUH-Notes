@@ -184,7 +184,7 @@ export default function QuestionsPage() {
               <strong>Live guaranteed-questions tool</strong>
               <p>
                 The original <em>GUARNTEE QNS</em> app from the reference site
-                is still online — pick a subject and fetch curated questions
+                is still online. Pick a subject and fetch curated questions
                 instantly.
               </p>
             </div>
@@ -281,7 +281,7 @@ export default function QuestionsPage() {
           <div className="notice qs-notice">
             Only {sets.length} short-question set
             {sets.length === 1 ? " is" : "s are"} published right now. More
-            subjects are being prepared —{" "}
+            subjects are being prepared.{" "}
             <a
               href={LINKS.feedback}
               target="_blank"

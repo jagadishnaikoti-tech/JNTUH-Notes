@@ -52,7 +52,7 @@ const EXT_ICON = {
   zip: FileArchive,
 };
 
-const EXAMPLES = ["DBMS", "Machine Learning", "Unit 2", "Java", "Interview"];
+const EXAMPLES = ["DBMS", "Machine Learning", "Unit 2", "Important questions", "2 marks", "Java"];
 
 /** Safe highlighter - renders matched segments as <mark>, no raw HTML. */
 function Highlight({ text, tokens }) {
@@ -174,7 +174,7 @@ function EmptySearch({ onPick }) {
       <h2 style={{ margin: 0 }}>Start typing to search</h2>
       <p className="muted" style={{ marginTop: 8 }}>
         Search across {SEARCH_TOTALS.subjects} subjects and{" "}
-        {SEARCH_TOTALS.files} documents — subject names, document titles,
+        {SEARCH_TOTALS.files} documents: subject names, document titles,
         file names, years and units.
       </p>
       <p className="search-tagline muted">{SITE.searchPlaceholder}</p>
@@ -443,7 +443,7 @@ export default function SearchPage() {
               <span className="filter-label">Sort</span>
               <select value={sort} onChange={(e) => setSort(e.target.value)}>
                 <option value="relevance">Relevance</option>
-                <option value="title">Title (A–Z)</option>
+                <option value="title">Title (A to Z)</option>
               </select>
             </label>
 

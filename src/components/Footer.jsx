@@ -7,8 +7,12 @@ import {
   FolderOpen,
   GraduationCap,
   Home as HomeIcon,
+  ListChecks,
   MessageSquare,
+  Scale,
   Search,
+  ShieldCheck,
+  Target,
   Trophy,
   Upload,
 } from "lucide-react";
@@ -19,6 +23,16 @@ const QUICK_LINKS = [
   { label: "Subjects by year", to: "/years", icon: GraduationCap },
   { label: "Learn Code", to: "/code", icon: Code2 },
   { label: "Search", to: "/search", icon: Search },
+];
+
+const EXAM_LINKS = [
+  { label: "Guaranteed Questions", to: "/questions/guaranteed", icon: Target },
+  { label: "Short Questions", to: "/questions/short", icon: ListChecks },
+];
+
+const LEGAL_LINKS = [
+  { label: "Privacy Policy", to: "/privacy-policy", icon: ShieldCheck },
+  { label: "Terms & Conditions", to: "/terms-and-conditions", icon: Scale },
 ];
 
 /**
@@ -33,15 +47,15 @@ export default function Footer() {
     <footer className="site-footer">
       <div className="footer-grid">
         <div className="footer-brand">
-          <Link className="footer-brand-row" to="/" title={`${SITE.heading} — Home`}>
+          <Link className="footer-brand-row" to="/" title={`${SITE.heading} · Home`}>
             <span className="footer-brand-mark" aria-hidden="true">
               <BookOpen size={20} />
             </span>
             <span className="footer-brand-name">{SITE.heading}</span>
           </Link>
           <p className="footer-desc">
-            Your study companion for organized academic notes and learning
-            resources.
+            Organised JNTUH B.Tech study material: subject notes, question sets
+            and previous papers, each linked to its original document.
           </p>
           <ul className="footer-meta">
             {SITE.meta.map((item) => (
@@ -101,6 +115,33 @@ export default function Footer() {
           </ul>
         </nav>
 
+        <nav className="footer-col" aria-label="Exam preparation">
+          <h2 className="footer-heading">Exam preparation</h2>
+          <ul className="footer-list">
+            {EXAM_LINKS.map((item) => {
+              const Icon = item.icon;
+              return (
+                <li key={item.to}>
+                  <Link to={item.to}>
+                    <Icon size={15} aria-hidden="true" />
+                    {item.label}
+                  </Link>
+                </li>
+              );
+            })}
+            <li>
+              <a
+                href={LINKS.guaranteeQns}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Target size={15} aria-hidden="true" />
+                Guaranteed Questions tool
+              </a>
+            </li>
+          </ul>
+        </nav>
+
         <nav className="footer-col" aria-label="Support">
           <h2 className="footer-heading">Support</h2>
           <ul className="footer-list">
@@ -136,6 +177,19 @@ export default function Footer() {
         <p className="footer-copy">
           © {year} {SITE.heading}. All rights reserved.
         </p>
+
+        <nav className="footer-legal" aria-label="Legal">
+          {LEGAL_LINKS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link key={item.to} to={item.to}>
+                <Icon size={14} aria-hidden="true" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+
         <p className="footer-dev">
           Developed by <strong>Jagadish</strong>
         </p>

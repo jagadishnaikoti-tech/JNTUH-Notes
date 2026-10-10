@@ -1,8 +1,8 @@
 {
-  "name": "lecture-notes",
+  "name": "jntuh-notes",
   "private": true,
   "version": "1.0.0",
-  "description": "React rebuild of the CSELNR223 Lecture Notes website (B.Tech study materials).",
+  "description": "JNTUH Notes - React (Vite) study-material website for B.Tech CSE & AIML (R22): subject notes, question sets and previous papers linked to their original documents.",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -99,15 +99,13 @@ export default function Sidebar() {
         aria-label="Main navigation"
       >
         <div className="sidebar-brand">
-          <Link className="sidebar-brand-inner" to="/" title={`${SITE.heading} — Home`}>
+          <Link className="sidebar-brand-inner" to="/" title={`${SITE.heading} · Home`}>
             <span className="sidebar-brand-mark" aria-hidden="true">
               <BookOpen size={22} strokeWidth={2} />
             </span>
             <span className="sidebar-brand-text">
               <span className="sidebar-brand-title">{SITE.heading}</span>
-              <span className="sidebar-brand-sub">
-                {SITE.brand} {SITE.brandEmoji}
-              </span>
+              <span className="sidebar-brand-sub">{SITE.brand}</span>
             </span>
           </Link>
           <button

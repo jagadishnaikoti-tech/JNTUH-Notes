@@ -72,7 +72,7 @@ export default function YearSelect() {
               <Award size={20} />
             </span>
             <span>
-              <span className="quick-card-title">GUARNTEE QNS</span>
+              <span className="quick-card-title">Guaranteed Questions</span>
               <span className="quick-card-desc">
                 Guaranteed questions to revise.
               </span>

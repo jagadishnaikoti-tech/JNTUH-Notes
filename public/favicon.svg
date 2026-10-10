@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="JNTUH Notes">
+  <rect x="0.5" y="0.5" width="63" height="63" rx="14" fill="#d97706"/>
+  <path d="M31.4 22.2c-4.6-2.2-11.2-2.9-16.4-2.1-1 .1-1.6 1-1.6 2v22.3c0 1.2 1 2.1 2.2 2 4.8-.6 10.9.1 15.8 2.3V22.2z" fill="#ffffff"/>
+  <path d="M32.6 22.2c4.6-2.2 11.2-2.9 16.4-2.1 1 .1 1.6 1 1.6 2v22.3c0 1.2-1 2.1-2.2 2-4.8-.6-10.9.1-15.8 2.3V22.2z" fill="#ffffff"/>
+  <path d="M31.4 22.2v26.5c-.3-.1-.6-.2-.9-.3V22c.3.1.6.1.9.2z" fill="#1c1917" opacity="0.55"/>
+</svg>

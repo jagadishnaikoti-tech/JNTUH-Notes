@@ -6,6 +6,8 @@ import {
   Code2,
   FolderOpen,
   GraduationCap,
+  Search,
+  Target,
   Trophy,
 } from "lucide-react";
 import {
@@ -34,7 +36,7 @@ const QUICK_LINKS = [
     icon: FolderOpen,
   },
   {
-    label: "GUARNTEE QNS",
+    label: "Guaranteed Questions",
     desc: "Guaranteed questions to revise before exams.",
     href: LINKS.guaranteeQns,
     icon: Award,
@@ -63,11 +65,15 @@ export default function Home() {
   return (
     <main className="page-main">
       <section className="hero">
-        <span className="hero-eyebrow">
-          {SITE.brand} {SITE.brandEmoji}
-        </span>
-        <h1 className="hero-title">{SITE.heading}</h1>
-        <p className="hero-tagline">{SITE.tagline}</p>
+        <p className="hero-eyebrow">{SITE.brand}</p>
+        <h1 className="hero-title">
+          JNTUH Notes and Exam Preparation Resources
+        </h1>
+        <p className="hero-tagline">
+          {SITE.tagline} Browse subject notes, important and guaranteed
+          questions, short questions and previous question papers, each linked
+          to its original document.
+        </p>
 
         <ul className="hero-meta">
           {SITE.meta.map((m) => (
@@ -78,17 +84,16 @@ export default function Home() {
         <div className="hero-actions">
           <Link className="btn btn-primary" to="/years">
             <GraduationCap size={18} aria-hidden="true" />
-            Get Started
+            Browse Subjects
           </Link>
-          <a
-            className="btn btn-secondary"
-            href={LINKS.results}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Trophy size={18} aria-hidden="true" />
-            Check Results
-          </a>
+          <Link className="btn btn-secondary" to="/questions/guaranteed">
+            <Target size={18} aria-hidden="true" />
+            Explore Question Sets
+          </Link>
+          <Link className="btn btn-ghost" to="/search">
+            <Search size={18} aria-hidden="true" />
+            Search Study Materials
+          </Link>
         </div>
 
         <p className="hero-note">{SITE.navNote}</p>

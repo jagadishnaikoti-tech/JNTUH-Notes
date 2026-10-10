@@ -51,8 +51,8 @@ export default function QuestionSetsSection() {
       </div>
 
       <p className="question-footnote">
-        Question sets are pulled from the real study material in your subjects
-        — no placeholder links.{" "}
+        Question sets are pulled from the real study material in your subjects.
+        No placeholder links.{" "}
         <Link to="/questions/guaranteed">Browse Guaranteed Questions</Link> ·{" "}
         <Link to="/questions/short">Browse Short Questions</Link>
       </p>

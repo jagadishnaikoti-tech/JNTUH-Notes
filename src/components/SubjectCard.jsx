@@ -28,7 +28,7 @@ export default function SubjectCard({ subject, yearId }) {
     <Link
       className="subject-card"
       to={`/subject/year${yearId}/${subject.folderId}`}
-      aria-label={`${subject.label} — ${count} ${count === 1 ? "item" : "items"}`}
+      aria-label={`${subject.label}: ${count} ${count === 1 ? "item" : "items"}`}
     >
       <span className="subject-card-icon" aria-hidden="true">
         <BookOpen size={18} />

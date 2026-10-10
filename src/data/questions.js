@@ -27,7 +27,7 @@ const EXCLUDED_PATTERNS =
 const INDEX = { guaranteed: [], short: [] };
 const seenTitle = { guaranteed: new Set(), short: new Set() };
 
-function classifyTitle(title) {
+export function classifyTitle(title) {
   if (EXCLUDED_PATTERNS.test(title)) return null;
   if (SHORT_PATTERNS.test(title)) return "short";
   if (GUARANTEED_PATTERNS.test(title)) return "guaranteed";

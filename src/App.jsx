@@ -14,17 +14,21 @@ import LearnCode from "./pages/LearnCode.jsx";
 import SubjectPage from "./pages/SubjectPage.jsx";
 import SearchPage from "./pages/SearchPage.jsx";
 import QuestionsPage from "./pages/QuestionsPage.jsx";
+import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
+import TermsConditions from "./pages/TermsConditions.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import { getRouteMeta } from "./lib/meta.js";
 
 function Layout() {
   const { pathname } = useLocation();
   const { collapsed, mobileOpen } = useSidebar();
 
+  // Keep the document title and meta description accurate per route.
   useEffect(() => {
-    document.title =
-      pathname === "/"
-        ? "JNTUH Notes | B.Tech CSE & AIML Study Material"
-        : "JNTUH Notes";
+    const { title, description } = getRouteMeta(pathname);
+    document.title = title;
+    const tag = document.querySelector('meta[name="description"]');
+    if (tag) tag.setAttribute("content", description);
   }, [pathname]);
 
   const shellClass =
@@ -61,6 +65,8 @@ export default function App() {
               <Route path="/subject/:groupId/:folderId" element={<SubjectPage />} />
               <Route path="/search" element={<SearchPage />} />
               <Route path="/questions/:category" element={<QuestionsPage />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/terms-and-conditions" element={<TermsConditions />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

@@ -18,6 +18,21 @@
 
 import resources from "../data/resources.json";
 import { YEARS } from "../data/site.js";
+import { classifyTitle } from "../data/questions.js";
+
+// Keyword tags added to documents that are real question sets, so that
+// category terms ("guaranteed", "short", "important", "2 marks") surface the
+// actual files. Derived from the same classifier used by the Q&S pages, so the
+// tag is never invented - it only mirrors the existing file-title analysis.
+const QUESTION_TAGS = {
+  guaranteed: "important guaranteed questions question bank imp q and a",
+  short: "short questions two marks 2 marks objective mcq quick revision",
+};
+
+function questionTags(title) {
+  const category = classifyTitle(title);
+  return (category && QUESTION_TAGS[category]) || "";
+}
 
 // ---- Document-type model --------------------------------------------------
 export const CATEGORY_LABELS = {
@@ -97,15 +112,23 @@ function escapeRegExp(value) {
 const yearNameById = new Map(YEARS.map((y) => [String(y.id), y.name]));
 const GROUP_CONTEXT = { learncode: "Learn Code", syllabus: "Syllabus" };
 
-function makeFields({ title, path, subject, year, ext }) {
+function makeFields({ title, path, subject, year, ext, tags }) {
   const fields = {
     title: normalizeText(title),
     path: normalizeText(path),
     subject: normalizeText(subject),
     year: normalizeText(year),
     ext: normalizeText(ext),
+    tags: normalizeText(tags),
   };
-  const norm = [fields.title, fields.path, fields.subject, fields.year, fields.ext]
+  const norm = [
+    fields.title,
+    fields.path,
+    fields.subject,
+    fields.year,
+    fields.ext,
+    fields.tags,
+  ]
     .filter(Boolean)
     .join(" ");
   return { fields, norm, compact: norm.replace(/ /g, "") };
@@ -193,6 +216,7 @@ export const FILE_RECORDS = [];
               subject: item.label,
               year: yearName,
               ext: `${ext} ${CATEGORY_LABELS[category] || ""}`,
+              tags: questionTags(node.title),
             }),
           });
         }
@@ -243,6 +267,10 @@ function scoreRecord(record, phrase, tokens, phraseCompact) {
     }
     if (f.ext && (f.ext === token || f.ext.startsWith(token))) {
       score += 8;
+      hit = true;
+    }
+    if (f.tags && f.tags.includes(token)) {
+      score += 18;
       hit = true;
     }
 
