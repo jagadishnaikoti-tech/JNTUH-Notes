@@ -19,25 +19,26 @@ export default function LearnCode() {
       </div>
 
       <div className="quick-grid">
-        {CODE_LINKS.map((link) => (
-          <a
-            className="quick-card"
-            key={link.label}
-            href={link.url}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <span className="quick-card-icon" aria-hidden="true">
-              <ExternalLink size={20} />
-            </span>
-            <span>
-              <span className="quick-card-title">{link.label}</span>
-              <span className="quick-card-desc">
-                Opens in a new tab
+        {CODE_LINKS.map((link) => {
+          const Icon = link.icon || ExternalLink;
+          return (
+            <a
+              className="quick-card"
+              key={link.label}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span className="quick-card-icon" aria-hidden="true">
+                <Icon size={20} />
               </span>
-            </span>
-          </a>
-        ))}
+              <span>
+                <span className="quick-card-title">{link.label}</span>
+                <span className="quick-card-desc">Opens in a new tab</span>
+              </span>
+            </a>
+          );
+        })}
       </div>
 
       <div className="row-center mt-xl">

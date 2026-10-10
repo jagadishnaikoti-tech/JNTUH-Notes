@@ -79,7 +79,8 @@ A left **sidebar** replaces the original horizontal navbar:
 - Expandable year groups containing every subject, plus each year's *Important
   Questions* / *R22 Previous Question Papers* folders.
 - **Learn Code** and **Search**, plus the coding-resource links from the original
-  site.
+  site (NOTES, ROAD-MAP, INTERVIEW QN's, INTERNSHIP, PROJECTS, PLACEMENT,
+  PRACTICE), each with its own icon.
 - Active-page highlighting, collapse/expand (icon-only mode), tooltips when
   collapsed, independent scrolling, and a **"Developed by Jagadish"**
   attribution.
@@ -99,10 +100,10 @@ the search moves to a full-width second row.
 ### Light and dark mode
 
 A header toggle switches the whole palette between the warm parchment light
-theme and a warm-charcoal dark theme. The choice is stored in `localStorage`
-(`ln:theme`) and the operating-system `prefers-color-scheme` value is used until
-the user decides. An inline script in `index.html` applies the saved theme before
-the first paint (no flash), and the browser `theme-color` is kept in sync. Both
+theme and a warm-charcoal dark theme. **Dark is the default**; once the visitor
+uses the toggle the choice is stored in `localStorage` (`ln:theme`) and wins on
+later visits. An inline script in `index.html` applies the saved theme before the
+first paint (no flash), and the browser `theme-color` is kept in sync. Both
 themes are token-driven from `src/styles/tokens.css` and independently meet WCAG
 AA contrast.
 

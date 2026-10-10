@@ -226,16 +226,15 @@ export default function Sidebar() {
 
           <p className="sidebar-section-label">Coding resources</p>
           {CODE_LINKS.map((link) => (
-            <a
+            <SidebarItem
               key={link.label}
               className="sb-sub"
               href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
+              icon={link.icon}
+              label={link.label}
+              collapsed={collapsed}
               title={`${link.label} (opens in a new tab)`}
-            >
-              {link.label}
-            </a>
+            />
           ))}
         </nav>
 

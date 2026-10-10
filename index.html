@@ -11,18 +11,14 @@
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#fffbeb" />
 
-    <!-- Apply the saved theme before paint to avoid a flash of the wrong mode. -->
+    <!-- Apply the saved theme before paint to avoid a flash of the wrong mode.
+         The site default is dark; the visitor's explicit choice wins. -->
     <script>
       (function () {
         try {
           var stored = localStorage.getItem("ln:theme");
           var theme =
-            stored === "dark" || stored === "light"
-              ? stored
-              : window.matchMedia &&
-                  window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light";
+            stored === "dark" || stored === "light" ? stored : "dark";
           var root = document.documentElement;
           root.setAttribute("data-theme", theme);
           root.style.colorScheme = theme;

@@ -7,10 +7,13 @@
 //
 // Preference resolution order:
 //   1. the value the user explicitly chose (localStorage)
-//   2. the operating-system setting (prefers-color-scheme)
+//   2. otherwise the site default, which is DARK
 // ---------------------------------------------------------------------------
 
 export const THEME_KEY = "ln:theme";
+
+/** Applied when the visitor has not made an explicit choice yet. */
+export const DEFAULT_THEME = "dark";
 
 export const THEME_COLORS = {
   light: "#fffbeb",
@@ -27,16 +30,9 @@ export function getStoredTheme() {
   }
 }
 
-/** The operating-system preference. */
-export function getSystemTheme() {
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
-}
-
 /** What the theme should be on a fresh load. */
 export function resolveInitialTheme() {
-  return getStoredTheme() || getSystemTheme();
+  return getStoredTheme() || DEFAULT_THEME;
 }
 
 /** Push a theme to the DOM and keep the browser theme-color in sync. */

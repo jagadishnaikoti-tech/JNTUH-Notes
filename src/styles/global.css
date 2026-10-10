@@ -360,6 +360,17 @@ ul {
   cursor: not-allowed;
 }
 
+/* Compact icon for the indented "Coding resources" rows */
+.sb-sub .sb-item-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.sb-sub .sb-item-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* Developer attribution + collapse control */
 .sidebar-foot {
   flex-shrink: 0;

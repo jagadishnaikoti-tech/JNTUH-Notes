@@ -7,6 +7,15 @@
 // so the React rebuild can expose each document with its original Drive URL.
 
 import resources from "./resources.json";
+import {
+  BriefcaseBusiness,
+  FolderKanban,
+  Map as MapIcon,
+  MessagesSquare,
+  NotebookText,
+  SquareTerminal,
+  Trophy,
+} from "lucide-react";
 
 export { resources };
 
@@ -62,14 +71,15 @@ export const LINKS = {
 };
 
 // ---- "Learn Code" links (from #sectioncode) -------------------------------
+// `icon` is a Lucide component used by the sidebar and the Learn Code cards.
 export const CODE_LINKS = [
-  { label: "NOTES", url: "https://drive.google.com/drive/folders/1iRu-rmlZXdMYuPjlustJ-WuZ8diGOMLx", external: true },
-  { label: "ROAD-MAP", url: "https://roadmap.sh/", external: true },
-  { label: "INTERVIEW QN's", url: "https://drive.google.com/drive/folders/1hfjcoHPZkwjHuXB08mlyDvzDeOClxKiA", external: true },
-  { label: "INTERNSHIP", url: "https://www.codsoft.in/", external: true },
-  { label: "PROJECTS", url: "https://drive.google.com/drive/folders/1iC3GyREkftJT-3l37Uz1cWDXFxW8y72l", external: true },
-  { label: "PLACEMENT", url: "https://drive.google.com/drive/u/0/mobile/folders/1SkCOcAS0Kqvuz-MJkkjbFr1GSue6Ms6m", external: true },
-  { label: "PRACTICE", url: "https://www.codechef.com/ide", external: true },
+  { label: "NOTES", url: "https://drive.google.com/drive/folders/1iRu-rmlZXdMYuPjlustJ-WuZ8diGOMLx", external: true, icon: NotebookText },
+  { label: "ROAD-MAP", url: "https://roadmap.sh/", external: true, icon: MapIcon },
+  { label: "INTERVIEW QN's", url: "https://drive.google.com/drive/folders/1hfjcoHPZkwjHuXB08mlyDvzDeOClxKiA", external: true, icon: MessagesSquare },
+  { label: "INTERNSHIP", url: "https://www.codsoft.in/", external: true, icon: BriefcaseBusiness },
+  { label: "PROJECTS", url: "https://drive.google.com/drive/folders/1iC3GyREkftJT-3l37Uz1cWDXFxW8y72l", external: true, icon: FolderKanban },
+  { label: "PLACEMENT", url: "https://drive.google.com/drive/u/0/mobile/folders/1SkCOcAS0Kqvuz-MJkkjbFr1GSue6Ms6m", external: true, icon: Trophy },
+  { label: "PRACTICE", url: "https://www.codechef.com/ide", external: true, icon: SquareTerminal },
 ];
 
 // ---- Year -> subject folder links (exact order & labels from reference) ----

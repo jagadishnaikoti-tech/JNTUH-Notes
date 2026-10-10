@@ -1,17 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Moon, Sun } from "lucide-react";
-import {
-  applyTheme,
-  getStoredTheme,
-  resolveInitialTheme,
-  storeTheme,
-} from "../lib/theme.js";
+import { applyTheme, resolveInitialTheme, storeTheme } from "../lib/theme.js";
 
 /**
  * Light / dark mode switch shown in the top-right of the header.
  *
  * The initial value comes from <html data-theme> (set by the inline script in
  * index.html before paint), so the button's icon always matches what is shown.
+ * Dark is the site default until the visitor chooses otherwise.
  */
 export default function ThemeToggle() {
   const [theme, setTheme] = useState(() => {
@@ -20,20 +16,6 @@ export default function ThemeToggle() {
       ? current
       : resolveInitialTheme();
   });
-
-  // Follow OS changes, but only while the user has not made an explicit choice.
-  useEffect(() => {
-    const media = window.matchMedia?.("(prefers-color-scheme: dark)");
-    if (!media) return undefined;
-    const onChange = (event) => {
-      if (getStoredTheme()) return;
-      const next = event.matches ? "dark" : "light";
-      setTheme(next);
-      applyTheme(next);
-    };
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
-  }, []);
 
   const isDark = theme === "dark";
 
