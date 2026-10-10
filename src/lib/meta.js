@@ -29,6 +29,8 @@ export function describeRoute(pathname) {
       return { kind: "code", path };
     case "/search":
       return { kind: "search", path };
+    case "/sitemaps":
+      return { kind: "sitemaps", path };
     case "/privacy-policy":
       return { kind: "privacy", path };
     case "/terms-and-conditions":

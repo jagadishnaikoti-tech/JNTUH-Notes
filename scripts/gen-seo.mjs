@@ -79,7 +79,8 @@ function routeDescriptors() {
     { kind: "code", path: "/code" },
     { kind: "search", path: "/search" },
     { kind: "privacy", path: "/privacy-policy" },
-    { kind: "terms", path: "/terms-and-conditions" }
+    { kind: "terms", path: "/terms-and-conditions" },
+    { kind: "sitemaps", path: "/sitemaps" }
   );
 
   // De-duplicate by canonical path.

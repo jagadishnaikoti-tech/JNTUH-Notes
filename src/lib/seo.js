@@ -189,6 +189,11 @@ export function seoFor(desc) {
         "Search the JNTUH Notes library by subject, unit, topic or file name, then open the original document. Results are grouped by year and category.";
       robots = NOINDEX_ROBOTS;
       break;
+    case "sitemaps":
+      title = "Site Map | JNTUH Notes";
+      description =
+        "Browse the full JNTUH Notes site map: academic years, CSE & AIML subjects, guaranteed and short questions, syllabus, coding resources and legal pages.";
+      break;
     case "privacy":
       title = "Privacy Policy | JNTUH Notes";
       description =
@@ -241,6 +246,8 @@ export function buildCrumbs(desc) {
       return [home, { label: "Learn Code", path: "/code", current: true }];
     case "search":
       return [home, { label: "Search", path: "/search", current: true }];
+    case "sitemaps":
+      return [home, { label: "Site Map", path: "/sitemaps", current: true }];
     case "questions": {
       const cat = QUESTION_CATEGORY_META[desc.categoryId];
       return [

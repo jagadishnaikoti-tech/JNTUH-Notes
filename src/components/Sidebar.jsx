@@ -9,6 +9,7 @@ import {
   Code2,
   GraduationCap,
   Home,
+  Map as MapIcon,
   Search,
   X,
 } from "lucide-react";
@@ -221,6 +222,13 @@ export default function Sidebar() {
             label={NAV.search.label}
             icon={NAV.search.icon}
             active={pathname === "/search"}
+            collapsed={collapsed}
+          />
+          <SidebarItem
+            to="/sitemaps"
+            label="Site Map"
+            icon={MapIcon}
+            active={pathname === "/sitemaps"}
             collapsed={collapsed}
           />
 

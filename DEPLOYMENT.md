@@ -22,7 +22,7 @@ npm run build     # -> ./dist
 - favicon set (`favicon.svg`, `favicon.ico`, `favicon-32.png`, `apple-touch-icon.png`),
   `og-image.png` (1200×630 social card), `site.webmanifest`
 - `robots.txt` (allows crawling, references the absolute sitemap URL)
-- `sitemap.xml` (built from the real route + resource inventory, 65 URLs)
+- `sitemap.xml` (built from the real route + resource inventory, 66 URLs)
 - one static HTML document per canonical route, both as `dist/<route>/index.html`
   and `dist/<route>.html` (see section 2)
 
@@ -59,10 +59,10 @@ so it can never drift from the site.
 
 | Item | What is generated |
 | --- | --- |
-| Per-route HTML | `dist/<route>/index.html` + `dist/<route>.html` for all 66 routes (home, years, subjects, question sets, coding resources, legal pages, search) |
+| Per-route HTML | `dist/<route>/index.html` + `dist/<route>.html` for all 67 routes (home, years, subjects, question sets, coding resources, site map, legal pages, search) |
 | Canonical URLs | Absolute, HTTPS, no trailing slash, one URL per page (`https://jntuh-notes.vercel.app/<route>`) |
 | Structured data | `WebSite` (with `SearchAction`) on the home page; `BreadcrumbList` on every other page — matching the visible breadcrumbs |
-| `sitemap.xml` | 65 indexable URLs (search excluded); well-formed XML; regenerated on every build |
+| `sitemap.xml` | 66 indexable URLs (search excluded); well-formed XML; regenerated on every build |
 | `robots.txt` | Allows all public content, points to the absolute sitemap URL |
 | `noindex` | Applied only to `/search` (utility page, excluded from the sitemap) and to the client-rendered 404 |
 | Social sharing | `og-image.png` (real brand asset) + OG/Twitter tags on every page |
@@ -168,7 +168,7 @@ For Google Search Console:
 | Production build (`npm run build`, incl. sitemap + prerendered head) | ✅ passing |
 | SPA deep-link refresh | ✅ confirmed locally via `vite preview` |
 | Per-route title/description/canonical/robots (66 documents) | ✅ 66 unique, validated |
-| `sitemap.xml` (65 URLs, well-formed, canonical, from real data) | ✅ validated |
+| `sitemap.xml` (66 URLs, well-formed, canonical, from real data) | ✅ validated |
 | `robots.txt` (allow-all + sitemap reference) | ✅ in place |
 | Structured data (`WebSite` + `BreadcrumbList`) | ✅ validates (JSON-LD parse-checked on all routes) |
 | Open Graph / Twitter card + `og-image.png` | ✅ in place |

@@ -8,6 +8,7 @@ import {
   GraduationCap,
   Home as HomeIcon,
   ListChecks,
+  Map as SiteMapIcon,
   MessageSquare,
   Scale,
   Search,
@@ -23,6 +24,7 @@ const QUICK_LINKS = [
   { label: "Subjects by year", to: "/years", icon: GraduationCap },
   { label: "Learn Code", to: "/code", icon: Code2 },
   { label: "Search", to: "/search", icon: Search },
+  { label: "Site Map", to: "/sitemaps", icon: SiteMapIcon },
 ];
 
 const EXAM_LINKS = [

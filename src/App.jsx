@@ -16,6 +16,7 @@ import SearchPage from "./pages/SearchPage.jsx";
 import QuestionsPage from "./pages/QuestionsPage.jsx";
 import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
 import TermsConditions from "./pages/TermsConditions.jsx";
+import SiteMap from "./pages/SiteMap.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import { applyRouteHead } from "./lib/head.js";
 
@@ -65,6 +66,7 @@ export default function App() {
               <Route path="/questions/:category" element={<QuestionsPage />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/terms-and-conditions" element={<TermsConditions />} />
+              <Route path="/sitemaps" element={<SiteMap />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

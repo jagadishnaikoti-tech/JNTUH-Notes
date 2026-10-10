@@ -17,12 +17,15 @@ Open Graph/Twitter tags, and no structured data.
 
 This has been fixed at build time and at runtime:
 
-- **Prerendered, per-route HTML** for all 66 canonical routes with unique
+- **Prerendered, per-route HTML** for all 67 canonical routes with unique
   `title`, `description`, `robots`, `canonical`, Open Graph, Twitter and
   JSON-LD in the raw HTML served to crawlers.
-- **`sitemap.xml`** (65 indexable URLs) generated from the real resource
+- **`sitemap.xml`** (66 indexable URLs) generated from the real resource
   inventory on every build.
 - **`robots.txt`** now references the absolute sitemap URL.
+- **HTML sitemap** at `/sitemaps` — a human-readable, filterable index of every
+  real route (linked from the footer and sidebar) that also gives crawlers a
+  dense set of internal links.
 - **Client-side head manager** keeps every tag in sync during SPA navigation.
 - **Breadcrumbs fixed** on question-set and legal pages (previously "Home ›
   Not found") and exposed as `BreadcrumbList` JSON-LD.
@@ -40,19 +43,19 @@ remain **blocked on owner access** (documented in `DEPLOYMENT.md`).
 ### Critical
 | # | Finding | Status |
 | --- | --- | --- |
-| C1 | `/sitemap.xml` returned `text/html` (the SPA shell) — a valid XML sitemap did not exist | ✅ Fixed — generated `sitemap.xml`, 65 URLs, well-formed, content-type `text/xml` |
+| C1 | `/sitemap.xml` returned `text/html` (the SPA shell) — a valid XML sitemap did not exist | ✅ Fixed — generated `sitemap.xml`, 66 URLs, well-formed, content-type `text/xml` |
 | C2 | No canonical tags on any page | ✅ Fixed — absolute HTTPS canonical per page, single host, no trailing slash |
-| C3 | All routes served the homepage `title`/description in raw HTML (empty `<div id="root">`) | ✅ Fixed — 66 prerendered route documents with correct raw `<head>` |
+| C3 | All routes served the homepage `title`/description in raw HTML (empty `<div id="root">`) | ✅ Fixed — 67 prerendered route documents with correct raw `<head>` |
 | C4 | No Open Graph / Twitter Card tags → broken previews on Facebook/X/LinkedIn/WhatsApp/Telegram | ✅ Fixed — per-page OG/Twitter tags + `og-image.png` brand card |
 
 ### High
 | # | Finding | Status |
 | --- | --- | --- |
 | H1 | Subject pages all used the generic title "Subject Study Material \| JNTUH Notes" | ✅ Fixed — real subject names + year, e.g. "DBMS Notes \| JNTUH B.Tech 2nd Year" |
-| H2 | Titles duplicated across year pages (e.g. "Important Questions" x3) | ✅ Fixed — all 66 titles now unique |
+| H2 | Titles duplicated across year pages (e.g. "Important Questions" x3) | ✅ Fixed — all 67 titles now unique |
 | H3 | `/search` (utility page) was indexable | ✅ Fixed — `noindex, follow` in prerendered HTML and on client navigation; excluded from sitemap |
 | H4 | Breadcrumbs showed "Home › Not found" on `/questions/*` and legal pages | ✅ Fixed — shared crumb logic covers every route |
-| H5 | No structured data | ✅ Fixed — `WebSite` (+ `SearchAction`) on home, `BreadcrumbList` on all other pages; JSON-LD parses on all 66 routes |
+| H5 | No structured data | ✅ Fixed — `WebSite` (+ `SearchAction`) on home, `BreadcrumbList` on all other pages; JSON-LD parses on all 67 routes |
 | H6 | `robots.txt` had no `Sitemap:` directive | ✅ Fixed |
 | H7 | Unknown/404 routes returned soft-200 with indexable metadata | ✅ Partial — client renders `noindex` + "Page Not Found" for unknown paths; static 404 status requires Vercel Functions (out of scope, documented) |
 | H8 | Heading-order a11y failure on subject pages (h1 → h3 skip) | ✅ Fixed — sequential heading hierarchy |
@@ -84,7 +87,8 @@ remain **blocked on owner access** (documented in `DEPLOYMENT.md`).
 | `src/App.jsx` | Uses `applyRouteHead()` per route |
 | `src/components/Breadcrumbs.jsx` | Rewritten — uses shared crumb trail (fixes Q&S + legal pages; matches JSON-LD) |
 | `src/pages/SubjectPage.jsx` | Sequential heading hierarchy (sr-only `<h2>` before file tree) |
-| `scripts/gen-seo.mjs` | **New** — build-time generator: 66 prerendered route docs + `sitemap.xml` |
+| `scripts/gen-seo.mjs` | **New** — build-time generator: 67 prerendered route docs + `sitemap.xml` |
+| `src/pages/SiteMap.jsx` | **New** — `/sitemaps` HTML sitemap: real-data sections, filter box, expandable year groups; linked from the footer, sidebar and no-JS fallback |
 | `index.html` | SEO marker block, OG/Twitter/robots/canonical defaults, manifest, preconnect+font `<link>`, no-JS fallback nav |
 | `src/styles/tokens.css` | Removed font `@import` (now a `<link>` in `index.html`) |
 | `public/robots.txt` | `Sitemap:` directive added |
@@ -136,7 +140,7 @@ answers it; no keyword stuffing, no invented statistics, no fake pages.
 - **All other pages:** `BreadcrumbList` matching the visible breadcrumbs.
 - No `Organization`, `Review`, `Rating`, `FAQPage`, or other markup not
   supported by real content.
-- Validation: JSON-LD parsed successfully for all 66 route documents.
+- Validation: JSON-LD parsed successfully for all 67 route documents.
 
 ---
 
@@ -162,9 +166,10 @@ This is a **client-rendered SPA**. Assessment:
 
 | Test | Result |
 | --- | --- |
-| `npm run build` (vite + gen-seo) | ✅ Pass — 66 route documents + sitemap.xml (65 URLs) |
-| All 66 route docs validated | ✅ 66/66 unique titles, 66/66 unique descriptions, 0 problems (missing tags, canonical mismatch, JSON-LD parse, robots expectations) |
-| `sitemap.xml` well-formed XML | ✅ `[xml]` parse: 65 `url` nodes; all `loc` absolute HTTPS on the canonical host; unique; `/search` excluded |
+| `npm run build` (vite + gen-seo) | ✅ Pass — 67 route documents + sitemap.xml (66 URLs) |
+| All 67 route docs validated | ✅ 67/67 unique titles, 67/67 unique descriptions, 0 problems (missing tags, canonical mismatch, JSON-LD parse, robots expectations) |
+| `sitemap.xml` well-formed XML | ✅ `[xml]` parse: 66 `url` nodes; all `loc` absolute HTTPS on the canonical host; unique; `/search` excluded; `/sitemaps` included |
+| `/sitemaps` HTML sitemap | ✅ 7 real sections / 106 links (64 internal routes + 40 external documents from `main`); filter (case-insensitive, partial, whitespace-normalised), clear button, no-results state; closed `<details>` still contain 69 crawlable anchors; Lighthouse a11y/best-practices/SEO 100/100/100 |
 | `robots.txt` served | ✅ `text/plain`, allow-all, absolute sitemap reference |
 | Static assets | ✅ `sitemap.xml` → `text/xml`; `og-image.png` → `image/png`; `site.webmanifest` → `application/manifest+json`; fonts 200 |
 | Direct-load routes (`/year/2`, subject, `/search`, legal) | ✅ Prerendered `<head>` served without JS (title, canonical, robots, JSON-LD) |
