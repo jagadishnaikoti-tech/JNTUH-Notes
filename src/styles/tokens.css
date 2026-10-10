@@ -14,7 +14,9 @@
    supporting domain searches (ux, icons, typography, react).
    ========================================================================= */
 
-@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&display=swap");
+/* Fonts are loaded from <link> tags in index.html (preconnect + stylesheet)
+   so they start in parallel with the app bundle instead of blocking on an
+   @import chain inside this stylesheet. */
 
 :root {
   color-scheme: light;

@@ -1,0 +1,29 @@
+{
+  "name": "JNTUH Notes",
+  "short_name": "JNTUH Notes",
+  "description": "JNTUH B.Tech CSE & AIML study material for the R22 regulation: subject notes, question sets and previous question papers.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#16120f",
+  "theme_color": "#16120f",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon-32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

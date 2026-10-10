@@ -17,18 +17,16 @@ import QuestionsPage from "./pages/QuestionsPage.jsx";
 import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
 import TermsConditions from "./pages/TermsConditions.jsx";
 import NotFound from "./pages/NotFound.jsx";
-import { getRouteMeta } from "./lib/meta.js";
+import { applyRouteHead } from "./lib/head.js";
 
 function Layout() {
   const { pathname } = useLocation();
   const { collapsed, mobileOpen } = useSidebar();
 
-  // Keep the document title and meta description accurate per route.
+  // Keep every SEO-relevant <head> tag accurate per route (title, description,
+  // robots, canonical, Open Graph, Twitter and JSON-LD).
   useEffect(() => {
-    const { title, description } = getRouteMeta(pathname);
-    document.title = title;
-    const tag = document.querySelector('meta[name="description"]');
-    if (tag) tag.setAttribute("content", description);
+    applyRouteHead(pathname);
   }, [pathname]);
 
   const shellClass =

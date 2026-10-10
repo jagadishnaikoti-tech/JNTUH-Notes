@@ -1,2 +1,6 @@
 User-agent: *
 Allow: /
+
+# Canonical XML sitemap (generated at build time from the real route + resource
+# inventory).
+Sitemap: https://jntuh-notes.vercel.app/sitemap.xml

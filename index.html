@@ -3,13 +3,57 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>JNTUH Notes | B.Tech CSE &amp; AIML Study Material</title>
+    <meta name="theme-color" content="#fffbeb" />
+
+    <!-- Route-specific SEO tags. Defaults target the homepage; the production
+         build rewrites everything between the seo:start / seo:end markers for
+         every canonical route (see scripts/gen-seo.mjs). Keep both markers. -->
+    <!--seo:start-->
+    <title>JNTUH Notes | B.Tech CSE &amp; AIML Study Materials (R22)</title>
     <meta
       name="description"
-      content="JNTUH Notes: free B.Tech CSE & AIML study material for the R22 regulation, including subject notes, important and guaranteed questions, short questions and previous question papers, each linked to its original document."
+      content="JNTUH B.Tech CSE &amp; AIML (R22) study material: subject notes, important and guaranteed questions, short questions and previous papers, linked to their original documents."
     />
     <meta name="robots" content="index, follow" />
-    <meta name="theme-color" content="#fffbeb" />
+    <link rel="canonical" href="https://jntuh-notes.vercel.app/" />
+    <meta property="og:site_name" content="JNTUH Notes" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en" />
+    <meta
+      property="og:title"
+      content="JNTUH Notes | B.Tech CSE &amp; AIML Study Materials (R22)"
+    />
+    <meta
+      property="og:description"
+      content="JNTUH B.Tech CSE &amp; AIML (R22) study material: subject notes, important and guaranteed questions, short questions and previous papers, linked to their original documents."
+    />
+    <meta property="og:url" content="https://jntuh-notes.vercel.app/" />
+    <meta property="og:image" content="https://jntuh-notes.vercel.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="JNTUH Notes | B.Tech CSE &amp; AIML Study Materials (R22)"
+    />
+    <meta
+      name="twitter:description"
+      content="JNTUH B.Tech CSE &amp; AIML (R22) study material: subject notes, important and guaranteed questions, short questions and previous papers, linked to their original documents."
+    />
+    <meta name="twitter:image" content="https://jntuh-notes.vercel.app/og-image.png" />
+    <script type="application/ld+json" id="ld-route">
+      {"@context":"https://schema.org","@type":"WebSite","name":"JNTUH Notes","alternateName":"JNTUH B.Tech Notes","url":"https://jntuh-notes.vercel.app/","inLanguage":"en","potentialAction":{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https://jntuh-notes.vercel.app/search?q={search_term_string}"},"query-input":"required name=search_term_string"}}
+    </script>
+    <!--seo:end-->
+
+    <!-- Fonts: preconnect + stylesheet (loads in parallel with the app bundle
+         instead of blocking on a CSS @import chain). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&amp;family=Cinzel:wght@400;500;600;700&amp;family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&amp;family=Crimson+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&amp;display=swap"
+    />
 
     <!-- Apply the saved theme before paint to avoid a flash of the wrong mode.
          The site default is dark; the visitor's explicit choice wins. -->
@@ -36,8 +80,30 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
   </head>
   <body>
+    <noscript>
+      <div
+        style="max-width:48rem;margin:2rem auto;padding:0 1rem;font-family:system-ui,sans-serif;line-height:1.6"
+      >
+        <h1>JNTUH Notes</h1>
+        <p>
+          Free B.Tech CSE &amp; AIML study material for the JNTUH R22
+          regulation, with subject notes, question sets and previous question
+          papers linked to their original documents. This browser interface
+          needs JavaScript; the main sections are listed below.
+        </p>
+        <ul>
+          <li><a href="/years">Browse subjects by year</a></li>
+          <li><a href="/questions/guaranteed">Guaranteed questions</a></li>
+          <li><a href="/questions/short">Short questions</a></li>
+          <li><a href="/code">Coding &amp; placement resources</a></li>
+          <li><a href="/search">Search study material</a></li>
+        </ul>
+      </div>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

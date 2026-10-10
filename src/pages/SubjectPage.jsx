@@ -121,7 +121,11 @@ export default function SubjectPage() {
           </p>
         </div>
       ) : (
-        <FileTree nodes={resource.files} onPreview={setPreview} />
+        <>
+          {/* Keeps the heading hierarchy sequential (h1 -> h2 -> h3 cards). */}
+          <h2 className="sr-only">Files in this folder</h2>
+          <FileTree nodes={resource.files} onPreview={setPreview} />
+        </>
       )}
 
       {preview ? (

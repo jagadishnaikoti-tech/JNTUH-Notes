@@ -1,77 +1,87 @@
 // ---------------------------------------------------------------------------
-// Per-route document metadata (title + meta description).
+// Route -> SEO resolver for the React app.
 //
-// Kept in one place so every route gets an accurate, descriptive <title> and
-// <meta name="description"> for SEO and browser history, without duplicating
-// strings across pages. Descriptions describe the real content of each route.
+// Turns a pathname into a route descriptor using the real content metadata,
+// then asks the shared, dependency-free src/lib/seo.js module for the
+// title/description/canonical/robots/JSON-LD. The visible Breadcrumbs
+// component and the build-time generator use the same descriptor + builders,
+// so the client-rendered <head> and the prerendered HTML never diverge.
 // ---------------------------------------------------------------------------
 
-import { getYear } from "../data/site.js";
+import { getResourceByFolderId, getYear } from "../data/site.js";
+import {
+  QUESTION_CATEGORY_META,
+  buildCrumbs,
+  normalizePath,
+  seoFor,
+} from "./seo.js";
 
-const BASE_DESCRIPTION =
-  "JNTUH Notes: free B.Tech CSE & AIML study material for the R22 regulation, including subject notes, important and guaranteed questions, short questions and previous question papers, each linked to its original document.";
+/** Build a self-contained descriptor for a pathname. */
+export function describeRoute(pathname) {
+  const path = normalizePath(pathname);
 
-const TITLES = {
-  "/years": "Select Year | JNTUH Notes",
-  "/code": "Learn Code | JNTUH Notes",
-  "/search": "Search Study Material | JNTUH Notes",
-  "/questions/guaranteed": "Guaranteed Questions | JNTUH Notes",
-  "/questions/short": "Short Questions | JNTUH Notes",
-  "/privacy-policy": "Privacy Policy | JNTUH Notes",
-  "/terms-and-conditions": "Terms & Conditions | JNTUH Notes",
-};
-
-const DESCRIPTIONS = {
-  "/years":
-    "Choose your JNTUH B.Tech year to browse subjects, notes and study material for the R22 regulation.",
-  "/code":
-    "Coding notes, roadmaps, interview preparation and placement resources collected for JNTUH B.Tech students.",
-  "/search":
-    "Search JNTUH Notes by subject, unit, topic or file name across the study-material library.",
-  "/questions/guaranteed":
-    "Guaranteed and important question sets organised by year and subject, linked to their original documents.",
-  "/questions/short":
-    "Short-answer and two-mark question sets for quick revision, organised by year and subject.",
-  "/privacy-policy":
-    "How JNTUH Notes handles local storage, third-party services and external document links.",
-  "/terms-and-conditions":
-    "The terms and conditions that apply to using the JNTUH Notes study-material website.",
-};
-
-const HOME_TITLE = "JNTUH Notes | B.Tech CSE & AIML Study Material";
-
-/** Resolve { title, description } for a given pathname. */
-export function getRouteMeta(pathname) {
-  if (pathname === "/") {
-    return { title: HOME_TITLE, description: BASE_DESCRIPTION };
+  switch (path) {
+    case "/":
+      return { kind: "home", path };
+    case "/years":
+      return { kind: "years", path };
+    case "/code":
+      return { kind: "code", path };
+    case "/search":
+      return { kind: "search", path };
+    case "/privacy-policy":
+      return { kind: "privacy", path };
+    case "/terms-and-conditions":
+      return { kind: "terms", path };
+    default:
+      break;
   }
 
-  const yearMatch = /^\/year\/([^/]+)/.exec(pathname);
+  const questionMatch = /^\/questions\/([^/]+)$/.exec(path);
+  if (questionMatch) {
+    const categoryId = questionMatch[1];
+    return { kind: "questions", path, categoryId };
+  }
+
+  const yearMatch = /^\/year\/([^/]+)$/.exec(path);
   if (yearMatch) {
     const year = getYear(yearMatch[1]);
-    const label = year ? year.name : "Subjects";
-    return {
-      title: `${label} | JNTUH Notes`,
-      description: `JNTUH B.Tech ${label} subjects, notes and study material (R22 regulation).`,
-    };
+    if (year) {
+      return {
+        kind: "year",
+        path,
+        yearId: String(year.id),
+        yearName: year.name,
+      };
+    }
+    return { kind: "notfound", path };
   }
 
-  if (pathname.startsWith("/subject/")) {
-    return {
-      title: "Subject Study Material | JNTUH Notes",
-      description:
-        "Subject study material: notes, question sets and documents, each linked to its original Google Drive file.",
-    };
+  const subjectMatch = /^\/subject\/([^/]+)\/([^/]+)$/.exec(path);
+  if (subjectMatch) {
+    const [, groupId, folderId] = subjectMatch;
+    const resource = getResourceByFolderId(folderId);
+    if (resource) {
+      const ym = /^year(\d)$/.exec(groupId);
+      const year = ym ? getYear(ym[1]) : null;
+      return {
+        kind: "subject",
+        path,
+        groupId,
+        label: resource.label,
+        yearId: year ? String(year.id) : undefined,
+        yearName: year ? year.name : undefined,
+      };
+    }
   }
 
-  if (TITLES[pathname]) {
-    return { title: TITLES[pathname], description: DESCRIPTIONS[pathname] };
-  }
-
-  return {
-    title: "Page Not Found | JNTUH Notes",
-    description: BASE_DESCRIPTION,
-  };
+  return { kind: "notfound", path };
 }
 
-export { BASE_DESCRIPTION, HOME_TITLE };
+/** Resolve { title, description, canonical, robots, jsonLd, crumbs, ... }. */
+export function getRouteMeta(pathname) {
+  const descriptor = describeRoute(pathname);
+  return { ...seoFor(descriptor), crumbs: buildCrumbs(descriptor), descriptor };
+}
+
+export { QUESTION_CATEGORY_META };
