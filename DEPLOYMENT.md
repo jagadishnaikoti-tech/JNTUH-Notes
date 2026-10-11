@@ -33,7 +33,7 @@ There is no server code and no environment variables.
 
 ### SPA routing
 
-`vercel.json` enables `cleanUrls: true` and contains the rewrite that sends
+`vercel.json` declares `cleanUrls: true` and the catch-all rewrite that sends
 unknown paths to `index.html`:
 
 ```json
@@ -43,12 +43,23 @@ unknown paths to `index.html`:
 }
 ```
 
-Vercel serves real static files (assets, favicons, `robots.txt`, `sitemap.xml`,
-`og-image.png`, and every prerendered `<route>/index.html` / `<route>.html`)
-before the rewrite, so only genuinely missing paths fall through to the app.
-This is what makes deep links such as `/year/2`, `/questions/guaranteed` and
-`/privacy-policy` work on a hard refresh — with correct per-page metadata in
-the raw HTML. Any other static host must configure the equivalent SPA fallback.
+> **Important:** on the current production project that rewrite is **not being
+> applied.** Verified against the live deployment: `cleanUrls` does not redirect
+> `*.html`, and an unknown path such as `/does-not-exist` or `/admin/login`
+> returns Vercel's plain-text 404 instead of the app shell. Whatever the cause in
+> the project settings, the deployment currently behaves like a **plain static
+> file host**: only paths that exist as a real file are served.
+
+Because of that, every route must exist as a real file after the build.
+`scripts/gen-seo.mjs` therefore writes prerendered documents for the public
+routes (`dist/<route>/index.html` + `dist/<route>.html`) **and** for the private
+admin routes (`dist/admin/**/index.html` + `dist/admin/*.html`, each with a
+`noindex, nofollow` head and no sitemap entry). This is what makes deep links
+such as `/year/2`, `/questions/guaranteed`, `/sitemaps` and `/admin/login` load
+correctly on a fresh request or refresh.
+
+If the Vercel project is later fixed so the rewrite takes effect, these files
+stay harmless: a real file always wins over the rewrite.
 
 ---
 
@@ -62,12 +73,13 @@ so it can never drift from the site.
 
 | Item | What is generated |
 | --- | --- |
-| Per-route HTML | `dist/<route>/index.html` + `dist/<route>.html` for all 67 routes (home, years, subjects, question sets, coding resources, site map, legal pages, search) |
+| Per-route HTML | `dist/<route>/index.html` + `dist/<route>.html` for all 67 public routes (home, years, subjects, question sets, coding resources, site map, legal pages, search) |
+| Admin documents | `dist/admin/**/index.html` + `dist/admin/*.html` for the 6 private admin routes, each with a `noindex, nofollow` head and no sitemap entry — present only so `/admin/*` deep links resolve on the static host |
 | Canonical URLs | Absolute, HTTPS, no trailing slash, one URL per page (`https://jntuh-notes.vercel.app/<route>`) |
 | Structured data | `WebSite` (with `SearchAction`) on the home page; `BreadcrumbList` on every other page — matching the visible breadcrumbs |
 | `sitemap.xml` | 66 indexable URLs (search excluded); well-formed XML; regenerated on every build |
 | `robots.txt` | Allows all public content, points to the absolute sitemap URL |
-| `noindex` | Applied only to `/search` (utility page, excluded from the sitemap) and to the client-rendered 404 |
+| `noindex` | Applied to `/search` (utility page, excluded from the sitemap), to the client-rendered 404, and to every `/admin/*` document (`noindex, nofollow`) |
 | Social sharing | `og-image.png` (real brand asset) + OG/Twitter tags on every page |
 
 ### Crawling / rendering model (honest assessment)

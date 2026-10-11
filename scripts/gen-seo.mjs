@@ -93,6 +93,21 @@ function routeDescriptors() {
   });
 }
 
+// The private admin area is a separate SPA mounted outside the public layout.
+// It is deliberately excluded from the public route inventory (no sitemap entry,
+// noindex), but it still needs real documents on disk: this project resolves
+// routes from static files, so an unknown path such as /admin/login would 404
+// before React Router ever runs. These documents exist only so deep links and
+// refreshes resolve; they are never linked from the public site.
+const ADMIN_ROUTES = [
+  { path: "/admin", title: "Admin | JNTUH Notes" },
+  { path: "/admin/login", title: "Admin Sign In | JNTUH Notes" },
+  { path: "/admin/dashboard", title: "Admin Dashboard | JNTUH Notes" },
+  { path: "/admin/analytics", title: "Visitor Analytics | JNTUH Notes" },
+  { path: "/admin/pdf-activity", title: "PDF Activity | JNTUH Notes" },
+  { path: "/admin/channels", title: "Social Channels | JNTUH Notes" },
+];
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -132,6 +147,16 @@ function seoBlock(seo) {
   return `<!--seo:start-->\n    ${lines.join("\n    ")}\n    <!--seo:end-->`;
 }
 
+// Head block for the private admin documents: no canonical, no structured data,
+// no Open Graph, and explicitly noindex/nofollow so nothing here is crawled.
+function adminSeoBlock(title) {
+  const lines = [
+    `<title>${escapeHtml(title)}</title>`,
+    `<meta name="robots" content="noindex, nofollow" />`,
+  ];
+  return `<!--seo:start-->\n    ${lines.join("\n    ")}\n    <!--seo:end-->`;
+}
+
 const SEO_MARKERS = /<!--seo:start-->[\s\S]*?<!--seo:end-->/;
 
 function main() {
@@ -146,6 +171,7 @@ function main() {
 
   const routes = routeDescriptors();
   let written = 0;
+  let adminWritten = 0;
 
   for (const descriptor of routes) {
     const seo = seoFor(descriptor);
@@ -174,6 +200,28 @@ function main() {
     written += 1;
   }
 
+  // Private admin documents. They exist only so deep links and refreshes on
+  // /admin/* resolve to the SPA shell even on hosts that never apply the
+  // vercel.json catch-all rewrite (this deployment's host does not). They are
+  // noindex and never referenced by the public site or the sitemap.
+  for (const admin of ADMIN_ROUTES) {
+    const html = template.replace(SEO_MARKERS, adminSeoBlock(admin.title));
+    const parts = normalizePath(admin.path).split("/").filter(Boolean);
+
+    const dirIndex = join(DIST, ...parts);
+    mkdirSync(dirIndex, { recursive: true });
+    writeFileSync(join(dirIndex, "index.html"), html);
+
+    const flatFile = join(
+      DIST,
+      ...parts.slice(0, -1),
+      `${parts[parts.length - 1]}.html`
+    );
+    mkdirSync(dirname(flatFile), { recursive: true });
+    writeFileSync(flatFile, html);
+    adminWritten += 1;
+  }
+
   // The search UI is a utility page: it gets a noindex document above but is
   // deliberately omitted from the sitemap.
   const urls = routes
@@ -189,7 +237,7 @@ function main() {
   writeFileSync(join(DIST, "sitemap.xml"), xml, "utf8");
 
   console.log(
-    `gen-seo: wrote ${written} route documents and sitemap.xml (${urls.length} URLs).`
+    `gen-seo: wrote ${written} route documents + ${adminWritten} admin documents and sitemap.xml (${urls.length} URLs).`
   );
 }
 
