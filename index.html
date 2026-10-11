@@ -11,13 +11,32 @@
       src="https://www.googletagmanager.com/gtag/js?id=G-VQGHZND2J7"
     ></script>
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag() {
-        dataLayer.push(arguments);
-      }
-      gtag("js", new Date());
+      // Consent Mode default. When VITE_REQUIRE_CONSENT=true, analytics storage
+      // stays "denied" until the visitor accepts the on-site banner, which calls
+      // gtag("consent","update") from src/lib/analytics.js.
+      (function () {
+        var requireConsent = "%VITE_REQUIRE_CONSENT%" === "true";
+        var stored = null;
+        try {
+          stored = window.localStorage.getItem("ln:analytics-consent");
+        } catch (e) {}
+        var granted = !requireConsent || stored === "granted";
 
-      gtag("config", "G-VQGHZND2J7");
+        window.dataLayer = window.dataLayer || [];
+        function gtag() {
+          dataLayer.push(arguments);
+        }
+        window.gtag = gtag;
+        gtag("js", new Date());
+        gtag("consent", "default", {
+          ad_storage: "denied",
+          ad_user_data: "denied",
+          ad_personalization: "denied",
+          analytics_storage: granted ? "granted" : "denied"
+        });
+
+        gtag("config", "G-VQGHZND2J7");
+      })();
     </script>
 
     <meta charset="UTF-8" />

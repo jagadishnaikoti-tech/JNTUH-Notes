@@ -15,7 +15,14 @@ function countFiles(nodes) {
  * nested Google Drive sub-folders become collapsible <details> groups so every
  * document in the original folder stays reachable.
  */
-export default function FileTree({ nodes, onPreview, depth = 0 }) {
+export default function FileTree({
+  nodes,
+  onPreview,
+  depth = 0,
+  subject = "",
+  yearName = "",
+  yearId = "",
+}) {
   const files = nodes.filter((n) => n.type === "file");
   const folders = nodes.filter((n) => n.type === "folder");
 
@@ -24,7 +31,14 @@ export default function FileTree({ nodes, onPreview, depth = 0 }) {
       {files.length > 0 ? (
         <div className="doc-grid">
           {files.map((file) => (
-            <DocumentCard key={file.fileId} file={file} onPreview={onPreview} />
+            <DocumentCard
+              key={file.fileId}
+              file={file}
+              onPreview={onPreview}
+              subject={subject}
+              yearName={yearName}
+              yearId={yearId}
+            />
           ))}
         </div>
       ) : null}
@@ -54,6 +68,9 @@ export default function FileTree({ nodes, onPreview, depth = 0 }) {
                 nodes={folder.children}
                 onPreview={onPreview}
                 depth={depth + 1}
+                subject={subject}
+                yearName={yearName}
+                yearId={yearId}
               />
             </div>
           </details>

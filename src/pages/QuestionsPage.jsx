@@ -41,7 +41,14 @@ function QuestionSetRow({ item, onPreview }) {
   const previewable = PREVIEWABLE_EXT.has(ext);
 
   return (
-    <li className="qs-item">
+    <li
+      className="qs-item"
+      data-doc-id={item.fileId || ""}
+      data-doc-title={item.title}
+      data-doc-subject={item.subject || ""}
+      data-doc-year={item.yearName || ""}
+      data-doc-year-id={item.yearId != null ? String(item.yearId) : ""}
+    >
       <span className={`qs-ext qs-ext-${ext || "file"}`} aria-hidden="true">
         {ext ? ext.toUpperCase() : "FILE"}
       </span>
@@ -50,6 +57,7 @@ function QuestionSetRow({ item, onPreview }) {
         <a
           className="qs-item-title"
           href={item.url}
+          data-doc-action="open"
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -73,6 +81,7 @@ function QuestionSetRow({ item, onPreview }) {
           <button
             type="button"
             className="btn btn-ghost btn-sm"
+            data-doc-action="view"
             onClick={() => onPreview(item)}
           >
             <Eye size={15} aria-hidden="true" />
@@ -88,6 +97,7 @@ function QuestionSetRow({ item, onPreview }) {
         <a
           className="btn btn-primary btn-sm"
           href={item.downloadUrl}
+          data-doc-action="download"
           target="_blank"
           rel="noopener noreferrer"
         >

@@ -1,5 +1,5 @@
+import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, Outlet, useLocation } from "react-router-dom";
-import { useEffect } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import Header from "./components/Header.jsx";
 import SearchShortcut from "./components/SearchShortcut.jsx";
@@ -7,6 +7,9 @@ import { SidebarProvider, useSidebar } from "./components/SidebarContext.jsx";
 import { ModalProvider } from "./components/ModalContext.jsx";
 import { ToastProvider } from "./components/ToastContext.jsx";
 import ScrollToTop from "./components/ScrollToTop.jsx";
+import PageViewTracker from "./components/analytics/PageViewTracker.jsx";
+import PdfClickTracker from "./components/analytics/PdfClickTracker.jsx";
+import ConsentBanner from "./components/analytics/ConsentBanner.jsx";
 import Home from "./pages/Home.jsx";
 import YearSelect from "./pages/YearSelect.jsx";
 import YearSubjects from "./pages/YearSubjects.jsx";
@@ -19,6 +22,10 @@ import TermsConditions from "./pages/TermsConditions.jsx";
 import SiteMap from "./pages/SiteMap.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import { applyRouteHead } from "./lib/head.js";
+
+// The whole admin area (and the Firebase Auth/Firestore SDKs it needs) is code
+// split, so public visitors never download it.
+const AdminApp = lazy(() => import("./pages/admin/AdminApp.jsx"));
 
 function Layout() {
   const { pathname } = useLocation();
@@ -39,6 +46,9 @@ function Layout() {
     <div className={shellClass}>
       <ScrollToTop />
       <SearchShortcut />
+      {/* First-party analytics: page views + PDF click tracking (public only). */}
+      <PageViewTracker />
+      <PdfClickTracker />
       <Sidebar />
       <div className="app-main">
         <Header />
@@ -46,6 +56,24 @@ function Layout() {
           <Outlet />
         </div>
       </div>
+      <ConsentBanner />
+    </div>
+  );
+}
+
+function AdminFallback() {
+  return (
+    <div
+      role="status"
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        fontFamily: "system-ui, sans-serif",
+        color: "#78716c",
+      }}
+    >
+      Loading administration…
     </div>
   );
 }
@@ -69,6 +97,16 @@ export default function App() {
               <Route path="/sitemaps" element={<SiteMap />} />
               <Route path="*" element={<NotFound />} />
             </Route>
+
+            {/* Admin area - fully separate from the public layout and chrome. */}
+            <Route
+              path="/admin/*"
+              element={
+                <Suspense fallback={<AdminFallback />}>
+                  <AdminApp />
+                </Suspense>
+              }
+            />
           </Routes>
         </SidebarProvider>
       </ToastProvider>

@@ -65,6 +65,9 @@ npm run preview  # serve the production build locally
 | `/questions/short` | Short Questions index |
 | `/privacy-policy` | Privacy Policy |
 | `/terms-and-conditions` | Terms & Conditions |
+| `/sitemaps` | HTML site map (human-readable) |
+| `/admin/login` | Admin sign-in (private) |
+| `/admin/dashboard`, `/admin/analytics`, `/admin/pdf-activity`, `/admin/channels` | Admin panel (private, login + `admin` claim required) |
 | `*` | Not found (404) |
 
 ---
@@ -162,6 +165,29 @@ dynamic year, and the preserved "Developed by Jagadish" attribution.
   Google tag. GA4's default "Enhanced measurement → page changes based on
   browser history events" tracks SPA route changes.
 
+### Admin panel & first-party analytics
+
+A private, Firebase-backed admin area sits on top of the same site (no separate
+app, no changes to the public pages' content or URLs). It is **code-split** — the
+Firebase Auth/Firestore/Analytics SDKs load only for admin routes or an actual
+tracking write, so public visitors download no Firebase code.
+
+- **Admin** (`/admin/*`): branded email/password sign-in, dashboard, page-view
+  analytics, PDF click activity and a social-channels manager. Authorization is a
+  Firebase Auth **custom claim** (`admin == true`) checked by both the client and
+  the Firestore rules — an account alone grants nothing, and there is no public
+  registration.
+- **Visitor analytics**: page views and PDF open/view/download clicks are written
+  to Firestore (`analyticsEvents`) and mirrored to GA4. Counts on the dashboard
+  come from recorded events only; empty states say so honestly.
+- **Privacy**: no IP addresses, emails or user-agent strings are stored; visitors
+  are counted with an anonymous random browser id. See `docs/ADMIN_SETUP.md`.
+
+Setup (Firebase project, rules, first admin, env vars) is documented end-to-end
+in [`docs/ADMIN_SETUP.md`](docs/ADMIN_SETUP.md).
+- The admin area (`/admin/*`) is served with `noindex, nofollow` and is
+  disallowed in `public/robots.txt`.
+
 ---
 
 ## Design system
@@ -204,10 +230,13 @@ src/
     PdfViewer.jsx          # in-app Google Drive preview overlay
     FileTree.jsx           # recursive folder -> files renderer
     QuestionSetsSection.jsx# home-page summary of the question sets
+    SocialChannels.jsx     # sidebar/footer rendering of configured channels
     Footer.jsx             # link columns + legal + attribution
     LegalPage.jsx          # shared shell for the legal pages
     Legal*.jsx / modal infra # preserved auth/credits infrastructure
     ScrollToTop.jsx        # scroll-to-top on route change
+    analytics/             # PageViewTracker, PdfClickTracker, ConsentBanner
+    admin/                 # admin shell, auth context, guard, UI primitives
   data/
     site.js                # labels + all original links (source of truth)
     resources.json         # generated inventory of every folder/file (821 files)
@@ -215,7 +244,15 @@ src/
   lib/
     search.js              # local search engine
     meta.js                # per-route title + meta description
+    seo.js                 # single source of SEO data (client + build)
+    head.js                # keeps <head> tags in sync on client navigation
     theme.js               # light/dark theme read + persistence
+    firebase.js            # env-driven client bootstrap; lazy SDK loaders
+    analytics.js           # page-view / PDF click recording + consent
+    adminAuth.js           # sign-in/out, admin claim check, persistence
+    analyticsQuery.js      # range query + pure aggregation (dashboard)
+    useAnalyticsData.js    # React hook around the analytics query
+    channels.js, social.js # social channel config + public rendering
   pages/
     Home.jsx               # "/"
     YearSelect.jsx         # "/years"
@@ -226,14 +263,22 @@ src/
     QuestionsPage.jsx      # "/questions/:category"
     PrivacyPolicy.jsx      # "/privacy-policy"
     TermsConditions.jsx    # "/terms-and-conditions"
+    SiteMap.jsx            # "/sitemaps"
     NotFound.jsx           # "*"
+    admin/                 # AdminApp + login/dashboard/analytics/pdf/channels
   styles/
     tokens.css             # design tokens
     global.css             # reset, layout, components, responsive rules
+    admin.css              # admin panel styling (site tokens)
   App.jsx                  # shell (sidebar + header + routed content)
   main.jsx
+scripts/
+  gen-seo.mjs              # prerendered route docs + sitemap.xml
+  set-admin.mjs            # grant/revoke the `admin` custom claim
 tools/                     # data pipeline (crawl, reports, verification, favicon)
+docs/ADMIN_SETUP.md        # Firebase/Vercel admin & analytics setup guide
 design-system/             # UI/UX Pro Max generated MASTER.md
+firestore.rules            # deny-by-default security rules
 public/                    # favicon set + robots.txt (no local document mirror)
 ```
 

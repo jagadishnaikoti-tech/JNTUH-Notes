@@ -1,0 +1,112 @@
+rules_version = '2';
+
+// ===========================================================================
+// JNTUH Notes - Cloud Firestore security rules
+//
+// Threat model
+//   * Visitors are anonymous and may only CREATE validated analytics events.
+//     They can never read other visitors' events, update or delete anything.
+//   * Only an authenticated administrator may read analytics or manage
+//     channels/settings. "Administrator" means a Firebase Auth user carrying the
+//     custom claim `admin == true`. Creating an account never grants this - the
+//     claim is set out-of-band with the Admin SDK (see scripts/set-admin.mjs).
+//   * Daily aggregates are written only by a trusted backend; the client can
+//     never write them.
+//
+// Deploy with:  firebase deploy --only firestore:rules
+// ===========================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers -----------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Server-enforced administrator check. Never trust the client UI alone.
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function isString(v, maxLen) {
+      return v is string && v.size() <= maxLen;
+    }
+
+    // ---- analyticsEvents/{eventId} ----------------------------------------
+    // Append-only, anonymous, validated event stream. This is the dashboard's
+    // source of truth.
+
+    function validEvent(d) {
+      return d.keys().hasOnly([
+          'type', 'path', 'title', 'docId', 'docTitle', 'subject', 'yearId',
+          'yearName', 'action', 'sourcePath', 'sourceTitle', 'visitorId',
+          'sessionId', 'ts', 'tsClient'
+        ])
+        && d.keys().hasAll(['type', 'visitorId', 'sessionId', 'ts'])
+        && d.type in ['page_view', 'pdf_click']
+        && isString(d.visitorId, 100) && d.visitorId.size() >= 8
+        && isString(d.sessionId, 100) && d.sessionId.size() >= 8
+        && d.ts is timestamp
+        // page_view must reference a path
+        && (d.type != 'page_view' || isString(d.path, 300))
+        // pdf_click must reference a document and a known action
+        && (d.type != 'pdf_click' || (isString(d.docId, 250)
+              && d.action in ['open', 'view', 'download']));
+    }
+
+    match /analyticsEvents/{eventId} {
+      allow create: if validEvent(request.resource.data);
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    // ---- analyticsDaily/{date} --------------------------------------------
+    // Rollups produced by a trusted backend only.
+
+    match /analyticsDaily/{date} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ---- channels/{channelId} ---------------------------------------------
+    // Public visitors may read ACTIVE channels only (their query filters
+    // `active == true`); administrators manage everything.
+
+    function validChannel(d) {
+      return d.keys().hasOnly(['name', 'url', 'icon', 'active', 'order', 'createdAt', 'updatedAt'])
+        && isString(d.name, 80) && d.name.size() >= 1
+        && isString(d.url, 500) && (d.url.matches('^https?://.+'))
+        && isString(d.icon, 40)
+        && d.active is bool
+        && d.order is number;
+    }
+
+    match /channels/{channelId} {
+      allow read: if isAdmin() || resource.data.active == true;
+      allow create, update: if isAdmin() && validChannel(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // ---- settings/{docId} --------------------------------------------------
+    // Public website settings. Only the `public` document is world-readable.
+
+    match /settings/public {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---- users/{uid} -------------------------------------------------------
+    // Optional administrator profile/role metadata. Roles are NOT read from
+    // here for authorization (custom claims are authoritative); these rules
+    // simply prevent self-service writes or privilege escalation via documents.
+
+    match /users/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if isAdmin();
+    }
+
+    // Everything else is denied by default.
+  }
+}

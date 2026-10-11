@@ -16,6 +16,7 @@ import {
 import { CODE_LINKS, LINKS, SITE, YEARS } from "../data/site.js";
 import { useSidebar } from "./SidebarContext.jsx";
 import SidebarItem from "./SidebarItem.jsx";
+import SocialChannels from "./SocialChannels.jsx";
 
 const SUBJECT_PATH = /^\/subject\/([^/]+)\/([^/]+)/;
 
@@ -244,6 +245,8 @@ export default function Sidebar() {
               title={`${link.label} (opens in a new tab)`}
             />
           ))}
+
+          <SocialChannels variant="sidebar" />
         </nav>
 
         <div className="sidebar-foot">

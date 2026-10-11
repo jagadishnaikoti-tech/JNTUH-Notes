@@ -124,7 +124,13 @@ export default function SubjectPage() {
         <>
           {/* Keeps the heading hierarchy sequential (h1 -> h2 -> h3 cards). */}
           <h2 className="sr-only">Files in this folder</h2>
-          <FileTree nodes={resource.files} onPreview={setPreview} />
+          <FileTree
+            nodes={resource.files}
+            onPreview={setPreview}
+            subject={resource.label}
+            yearName={/^year\d$/.test(groupId) ? ctx.title : ""}
+            yearId={/^year\d$/.test(groupId) ? groupId.replace("year", "") : ""}
+          />
         </>
       )}
 

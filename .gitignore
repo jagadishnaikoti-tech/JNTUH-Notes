@@ -7,3 +7,8 @@ dist-ssr
 __pycache__/
 *.py[cod]
 tools/*.json.bak
+
+# Firebase Admin SDK service-account keys must never be committed.
+serviceAccount*.json
+*firebase-adminsdk*.json
+.firebase/

@@ -8,9 +8,12 @@
     "dev": "vite",
     "build": "vite build && node scripts/gen-seo.mjs",
     "preview": "vite preview",
-    "seo": "node scripts/gen-seo.mjs"
+    "seo": "node scripts/gen-seo.mjs",
+    "admin:grant": "node scripts/set-admin.mjs",
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes"
   },
   "dependencies": {
+    "firebase": "^11.10.0",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -18,6 +21,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.3",
+    "firebase-admin": "^14.5.0",
     "vite": "^5.4.10"
   }
 }

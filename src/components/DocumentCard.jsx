@@ -13,11 +13,27 @@ function formatBytes(bytes) {
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
-export default function DocumentCard({ file, onPreview, showSubject = false }) {
+export default function DocumentCard({
+  file,
+  onPreview,
+  showSubject = false,
+  subject = "",
+  yearName = "",
+  yearId = "",
+}) {
   const canPreview = typeof onPreview === "function";
 
   return (
-    <article className="doc-card">
+    <article
+      className="doc-card"
+      data-doc-id={file.fileId}
+      data-doc-title={file.title}
+      // Context (subject/year) comes from the page for analytics; fall back to
+      // whatever the crawled node carries.
+      data-doc-subject={subject || file.subject || ""}
+      data-doc-year={yearName || ""}
+      data-doc-year-id={yearId || ""}
+    >
       <div className="doc-card-head">
         <span className="doc-icon" aria-hidden="true">
           <FileText size={18} />
@@ -39,6 +55,7 @@ export default function DocumentCard({ file, onPreview, showSubject = false }) {
           <button
             type="button"
             className="btn btn-primary btn-sm"
+            data-doc-action="view"
             onClick={() => onPreview(file)}
           >
             <Eye size={15} aria-hidden="true" />
@@ -48,6 +65,7 @@ export default function DocumentCard({ file, onPreview, showSubject = false }) {
         <a
           className="btn btn-ghost btn-sm"
           href={file.url}
+          data-doc-action="open"
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -57,6 +75,7 @@ export default function DocumentCard({ file, onPreview, showSubject = false }) {
         <a
           className="btn btn-ghost btn-sm"
           href={file.downloadUrl}
+          data-doc-action="download"
           target="_blank"
           rel="noopener noreferrer"
         >

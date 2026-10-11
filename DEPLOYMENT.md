@@ -18,7 +18,10 @@ npm run build     # -> ./dist
 `npm run build` runs `vite build` first, then the SEO generator
 (`node scripts/gen-seo.mjs`). `./dist` is a fully static bundle:
 
-- `index.html` + `assets/` (app JS/CSS)
+- `index.html` + `assets/` (app JS/CSS). React and the resource inventory are
+  split into their own cacheable chunks, and the whole `/admin/*` area (plus the
+  Firebase Auth/Firestore/Analytics SDKs) is a lazy chunk that public visitors
+  never download.
 - favicon set (`favicon.svg`, `favicon.ico`, `favicon-32.png`, `apple-touch-icon.png`),
   `og-image.png` (1200×630 social card), `site.webmanifest`
 - `robots.txt` (allows crawling, references the absolute sitemap URL)
@@ -141,7 +144,20 @@ required. Once available:
 
 ## 5. Search Console & analytics readiness
 
-No analytics or tracking scripts are installed (nothing collects personal data).
+Two analytics layers are installed:
+
+- **GA4** (`G-VQGHZND2J7`) via the manual `gtag.js` tag in `index.html`.
+- **First-party visitor analytics** — page views and PDF open/view/download
+  clicks written to Firebase Firestore and mirrored to GA4. No IP addresses,
+  emails or user-agent strings are stored; visitors are counted with an
+  anonymous random browser id. Consent handling is opt-in via
+  `VITE_REQUIRE_CONSENT` (default `false`).
+
+Both are aggregate reporting only and are **not** used for security decisions.
+The private admin panel lives at `/admin/*` (excluded in `robots.txt`, served
+`noindex, nofollow`) and requires the Firebase `admin` custom claim. Full setup
+is in [`docs/ADMIN_SETUP.md`](docs/ADMIN_SETUP.md).
+
 For Google Search Console:
 
 1. **Verify the property.** Recommended: a **URL-prefix property** for
@@ -176,6 +192,9 @@ For Google Search Console:
 | Google Search Console property verified + sitemap submitted | ⛔ **blocked — needs owner access to the property** (steps in section 5) |
 | **Custom domain attached + verified** | ⛔ **blocked — requires the real domain + DNS access** |
 | HTTPS + redirects verified on the custom domain | ⛔ blocked with the above |
+| Public site tracking (page views + PDF clicks) | ✅ wired and browser-verified (no console errors) |
+| Admin panel sign-in / guards / empty states | ✅ wired; login error handling verified |
+| Firebase project setup (Email/Password, Firestore, rules, first admin, env vars) | ⛔ **blocked — owner action**, see `docs/ADMIN_SETUP.md` |
 
 The site is ready to ship; the outstanding launch items (custom domain, Search
 Console verification) require owner access and cannot be done from this

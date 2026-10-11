@@ -18,6 +18,7 @@ import {
   Upload,
 } from "lucide-react";
 import { LINKS, SITE, YEARS, getYearStats } from "../data/site.js";
+import SocialChannels from "./SocialChannels.jsx";
 
 const QUICK_LINKS = [
   { label: "Home", to: "/", icon: HomeIcon },
@@ -173,6 +174,8 @@ export default function Footer() {
             </li>
           </ul>
         </nav>
+
+        <SocialChannels />
       </div>
 
       <div className="footer-bottom">

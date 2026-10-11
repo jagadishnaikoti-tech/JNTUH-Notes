@@ -2736,3 +2736,75 @@ a.crumb:hover {
     font-size: var(--text-lg);
   }
 }
+
+/* =========================================================================
+   Social channels (sidebar + footer) and the analytics consent banner.
+   The channel blocks only render when at least one channel is configured in
+   the admin panel, so there is no empty gap for visitors.
+   ========================================================================= */
+
+.sb-social {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: 4px var(--space-md) 4px calc(var(--space-md) + 4px);
+}
+
+.sb-social-link {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--color-foreground);
+  background: var(--color-muted);
+  text-decoration: none;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+
+.sb-social-link:hover,
+.sb-social-link:focus-visible {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.footer-social {
+  margin-top: var(--space-sm);
+}
+
+.consent-banner {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-md);
+  transform: translateX(-50%);
+  z-index: var(--z-modal);
+  width: min(680px, calc(100vw - 2 * var(--space-md)));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--color-card);
+  color: var(--color-card-foreground);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+
+.consent-text {
+  flex: 1 1 320px;
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.consent-text a {
+  color: var(--color-secondary);
+}
+
+.consent-actions {
+  display: flex;
+  gap: var(--space-sm);
+  flex: 0 0 auto;
+}

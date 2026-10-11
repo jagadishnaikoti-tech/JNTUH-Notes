@@ -25,6 +25,8 @@ export default function PdfViewer({ file, onClose }) {
   return (
     <div
       className="viewer-wrap"
+      data-doc-id={file.fileId}
+      data-doc-title={file.title}
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -43,6 +45,7 @@ export default function PdfViewer({ file, onClose }) {
           <div className="viewer-tools">
             <a
               href={file.url}
+              data-doc-action="open"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-ghost btn-sm"
@@ -52,6 +55,7 @@ export default function PdfViewer({ file, onClose }) {
             </a>
             <a
               href={file.downloadUrl}
+              data-doc-action="download"
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-primary btn-sm"

@@ -1,6 +1,9 @@
 User-agent: *
 Allow: /
 
+# The admin panel is private and must never be indexed or crawled.
+Disallow: /admin
+
 # Canonical XML sitemap (generated at build time from the real route + resource
 # inventory).
 Sitemap: https://jntuh-notes.vercel.app/sitemap.xml

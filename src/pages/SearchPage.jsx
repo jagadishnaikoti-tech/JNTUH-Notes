@@ -114,6 +114,11 @@ const ResultRow = memo(function ResultRow({
   return (
     <li
       className={"result-row" + (active ? " is-active" : "")}
+      data-doc-id={record.fileId || ""}
+      data-doc-title={record.title}
+      data-doc-subject={record.subject || ""}
+      data-doc-year={record.year || ""}
+      data-doc-year-id={record.yearId != null ? String(record.yearId) : ""}
       onMouseEnter={() => onActivate(index)}
     >
       {isSubject ? (
@@ -141,6 +146,7 @@ const ResultRow = memo(function ResultRow({
           <button
             type="button"
             className="btn btn-ghost btn-sm"
+            data-doc-action="view"
             onClick={() => onPreview(record)}
           >
             <Eye size={14} aria-hidden="true" />
@@ -153,6 +159,7 @@ const ResultRow = memo(function ResultRow({
           <a
             className="btn btn-ghost btn-sm"
             href={record.downloadUrl}
+            data-doc-action="download"
             target="_blank"
             rel="noopener noreferrer"
           >
