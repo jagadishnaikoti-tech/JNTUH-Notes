@@ -35,6 +35,14 @@ export function describeRoute(pathname) {
       return { kind: "privacy", path };
     case "/terms-and-conditions":
       return { kind: "terms", path };
+    case "/signin":
+      return { kind: "signin", path };
+    case "/signup":
+      return { kind: "signup", path };
+    case "/forgot-password":
+      return { kind: "forgot", path };
+    case "/account":
+      return { kind: "account", path };
     default:
       break;
   }

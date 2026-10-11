@@ -574,6 +574,16 @@ a.crumb:hover {
   color: var(--color-secondary);
 }
 
+/* Right cluster of the header: account control + theme switch */
+.header-actions {
+  grid-column: 3;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
 /* Search bar */
 .searchbar {
   display: flex;
@@ -2022,6 +2032,12 @@ a.crumb:hover {
   }
 
   .theme-toggle {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .header-actions {
     grid-column: 3;
     grid-row: 1;
     justify-self: end;

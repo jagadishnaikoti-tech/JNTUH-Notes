@@ -6,10 +6,12 @@ import SearchShortcut from "./components/SearchShortcut.jsx";
 import { SidebarProvider, useSidebar } from "./components/SidebarContext.jsx";
 import { ModalProvider } from "./components/ModalContext.jsx";
 import { ToastProvider } from "./components/ToastContext.jsx";
+import { AuthProvider } from "./context/AuthContext.jsx";
 import ScrollToTop from "./components/ScrollToTop.jsx";
 import PageViewTracker from "./components/analytics/PageViewTracker.jsx";
 import PdfClickTracker from "./components/analytics/PdfClickTracker.jsx";
 import ConsentBanner from "./components/analytics/ConsentBanner.jsx";
+import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import Home from "./pages/Home.jsx";
 import YearSelect from "./pages/YearSelect.jsx";
 import YearSubjects from "./pages/YearSubjects.jsx";
@@ -20,6 +22,10 @@ import QuestionsPage from "./pages/QuestionsPage.jsx";
 import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
 import TermsConditions from "./pages/TermsConditions.jsx";
 import SiteMap from "./pages/SiteMap.jsx";
+import SignIn from "./pages/SignIn.jsx";
+import SignUp from "./pages/SignUp.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
+import Account from "./pages/Account.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import { applyRouteHead } from "./lib/head.js";
 
@@ -61,6 +67,16 @@ function Layout() {
   );
 }
 
+// The public shell owns the student auth provider. The admin area is mounted
+// outside it, so its own (separate) auth provider is unaffected.
+function PublicLayout() {
+  return (
+    <AuthProvider>
+      <Layout />
+    </AuthProvider>
+  );
+}
+
 function AdminFallback() {
   return (
     <div
@@ -84,7 +100,7 @@ export default function App() {
       <ToastProvider>
         <SidebarProvider>
           <Routes>
-            <Route element={<Layout />}>
+            <Route element={<PublicLayout />}>
               <Route path="/" element={<Home />} />
               <Route path="/years" element={<YearSelect />} />
               <Route path="/year/:yearId" element={<YearSubjects />} />
@@ -95,6 +111,20 @@ export default function App() {
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/terms-and-conditions" element={<TermsConditions />} />
               <Route path="/sitemaps" element={<SiteMap />} />
+
+              {/* Student authentication */}
+              <Route path="/signin" element={<SignIn />} />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route
+                path="/account"
+                element={
+                  <ProtectedRoute>
+                    <Account />
+                  </ProtectedRoute>
+                }
+              />
+
               <Route path="*" element={<NotFound />} />
             </Route>
 

@@ -66,6 +66,10 @@ npm run preview  # serve the production build locally
 | `/privacy-policy` | Privacy Policy |
 | `/terms-and-conditions` | Terms & Conditions |
 | `/sitemaps` | HTML site map (human-readable) |
+| `/signin` | Student sign-in |
+| `/signup` | Student sign-up |
+| `/forgot-password` | Request a password reset email |
+| `/account` | Student account (private, sign-in required) |
 | `/admin/login` | Admin sign-in (private) |
 | `/admin/dashboard`, `/admin/analytics`, `/admin/pdf-activity`, `/admin/channels` | Admin panel (private, login + `admin` claim required) |
 | `*` | Not found (404) |
@@ -165,6 +169,36 @@ dynamic year, and the preserved "Developed by Jagadish" attribution.
   Google tag. GA4's default "Enhanced measurement → page changes based on
   browser history events" tracks SPA route changes.
 
+### Student accounts (Firebase Auth)
+
+The public site stays fully usable without an account. Student sign-in is an
+optional extra, built on the official Firebase JS SDK (v11) and the existing
+Firebase app — no second app is created and the SDK still loads only when a
+public page actually needs it.
+
+- **Pages** (`/signin`, `/signup`, `/forgot-password`, `/account`): branded,
+  accessible forms with show/hide password, inline validation, a password
+  strength hint, clear error and loading states and duplicate-submit
+  protection. Password reset emails are real Firebase emails and the flow never
+  reveals whether an address is registered.
+- **Header & sidebar**: signed out shows *Sign in* and *Create account*; signed
+  in shows the student's display name with an account menu (My account, Sign
+  out). The controls update automatically from the Firebase auth-state listener
+  — nothing signed-in is shown until the auth state resolves.
+- **Profiles**: an optional `users/{uid}` document stores only `displayName`,
+  `email`, `createdAt` and `updatedAt`. Writes are best-effort and never block
+  authentication. A student can read and update only their own profile and the
+  permitted fields; roles are never stored in Firestore.
+- **Authorization** is unchanged: administration is a Firebase Auth custom claim
+  (`admin == true`), so creating a student account can never grant admin access.
+- **Redirects** are validated (`safeNext`) so `?next=` can only ever point at an
+  in-site path (no open redirect).
+
+Setup (Email/Password provider, authorized domains, Firestore rules) is
+documented in [`docs/AUTH.md`](docs/AUTH.md). The auth pages are prerendered
+`noindex` and are excluded from `sitemap.xml`; `/account` is additionally
+disallowed in `public/robots.txt`.
+
 ### Admin panel & first-party analytics
 
 A private, Firebase-backed admin area sits on top of the same site (no separate
@@ -235,8 +269,13 @@ src/
     LegalPage.jsx          # shared shell for the legal pages
     Legal*.jsx / modal infra # preserved auth/credits infrastructure
     ScrollToTop.jsx        # scroll-to-top on route change
+    AuthForm.jsx           # shared auth page shell + inputs (AuthPage, AuthInput…)
+    AuthNav.jsx            # header/sidebar auth controls + account menu
+    ProtectedRoute.jsx     # student sign-in gate (preserves ?next=)
     analytics/             # PageViewTracker, PdfClickTracker, ConsentBanner
     admin/                 # admin shell, auth context, guard, UI primitives
+  context/
+    AuthContext.jsx        # student auth state (status + profile) + useAuth()
   data/
     site.js                # labels + all original links (source of truth)
     resources.json         # generated inventory of every folder/file (821 files)
@@ -250,6 +289,8 @@ src/
     firebase.js            # env-driven client bootstrap; lazy SDK loaders
     analytics.js           # page-view / PDF click recording + consent
     adminAuth.js           # sign-in/out, admin claim check, persistence
+    userAuth.js            # student auth calls, validation, error map, safeNext
+    userProfile.js         # users/{uid} profile read/create/update
     analyticsQuery.js      # range query + pure aggregation (dashboard)
     useAnalyticsData.js    # React hook around the analytics query
     channels.js, social.js # social channel config + public rendering
@@ -261,6 +302,10 @@ src/
     SubjectPage.jsx        # "/subject/:group/:folderId"
     SearchPage.jsx         # "/search?q="
     QuestionsPage.jsx      # "/questions/:category"
+    SignIn.jsx             # "/signin"
+    SignUp.jsx             # "/signup"
+    ForgotPassword.jsx     # "/forgot-password"
+    Account.jsx            # "/account" (protected)
     PrivacyPolicy.jsx      # "/privacy-policy"
     TermsConditions.jsx    # "/terms-and-conditions"
     SiteMap.jsx            # "/sitemaps"
@@ -269,6 +314,7 @@ src/
   styles/
     tokens.css             # design tokens
     global.css             # reset, layout, components, responsive rules
+    auth.css               # student auth + account styling (site tokens)
     admin.css              # admin panel styling (site tokens)
   App.jsx                  # shell (sidebar + header + routed content)
   main.jsx
@@ -278,6 +324,7 @@ scripts/
   set-admin.mjs            # grant/revoke the `admin` custom claim
 tools/                     # data pipeline (crawl, reports, verification, favicon)
 docs/ADMIN_SETUP.md        # Firebase/Vercel admin & analytics setup guide
+docs/AUTH.md               # student account (Firebase Auth) setup guide
 design-system/             # UI/UX Pro Max generated MASTER.md
 firestore.rules            # deny-by-default security rules
 public/                    # favicon set + robots.txt (no local document mirror)

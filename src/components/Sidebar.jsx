@@ -17,6 +17,7 @@ import { CODE_LINKS, LINKS, SITE, YEARS } from "../data/site.js";
 import { useSidebar } from "./SidebarContext.jsx";
 import SidebarItem from "./SidebarItem.jsx";
 import SocialChannels from "./SocialChannels.jsx";
+import AuthNav from "./AuthNav.jsx";
 
 const SUBJECT_PATH = /^\/subject\/([^/]+)\/([^/]+)/;
 
@@ -250,6 +251,7 @@ export default function Sidebar() {
         </nav>
 
         <div className="sidebar-foot">
+          <AuthNav variant="sidebar" />
           <p className="sb-attribution">
             <span className="sb-attribution-text">Developed by </span>
             <span className="sb-attribution-name">Jagadish</span>

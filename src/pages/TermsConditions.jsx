@@ -15,7 +15,7 @@ export default function TermsConditions() {
     <LegalPage
       eyebrow="Legal"
       title="Terms & Conditions"
-      updated="10 October 2026"
+      updated="12 October 2026"
       intro="These terms explain the rules for using the JNTUH Notes website. By accessing or using the website, you agree to them."
     >
       <section className="legal-section">
@@ -35,6 +35,33 @@ export default function TermsConditions() {
           links to lecture notes, important and guaranteed question material,
           short questions and previous question papers. It is a resource
           directory; it does not host, sell or grade the material.
+        </p>
+      </section>
+
+      <section className="legal-section">
+        <h2>Accounts</h2>
+        <p>
+          You do not need an account to use the study material. Creating an
+          optional student account is free and is used only to sign you in and
+          show your name. When you create an account you agree to:
+        </p>
+        <ul className="legal-list">
+          <li>give a name and email address that are accurate and your own;</li>
+          <li>
+            keep your password private and accept responsibility for activity
+            under your account;
+          </li>
+          <li>
+            not share, transfer or impersonate another person, and not attempt
+            to access accounts, data or administration areas that are not yours.
+          </li>
+        </ul>
+        <p>
+          An account is an ordinary student account. It does not grant
+          moderation or administrative access to the website. Accounts that
+          break these terms may be suspended or removed. You may stop using your
+          account at any time, and you can ask us to delete it as described in
+          the <Link to="/privacy-policy">Privacy Policy</Link>.
         </p>
       </section>
 

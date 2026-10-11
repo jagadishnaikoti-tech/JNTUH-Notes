@@ -98,12 +98,32 @@ service cloud.firestore {
     }
 
     // ---- users/{uid} -------------------------------------------------------
-    // Optional administrator profile/role metadata. Roles are NOT read from
-    // here for authorization (custom claims are authoritative); these rules
-    // simply prevent self-service writes or privilege escalation via documents.
+    // Optional student profile document (display name, email, timestamps).
+    // Authorization NEVER reads from here - the `admin` custom claim is
+    // authoritative. These rules let a student maintain only their own display
+    // name, and prevent privilege escalation through document fields.
+
+    function validProfileCreate(d) {
+      return d.keys().hasOnly(['displayName', 'email', 'createdAt', 'updatedAt'])
+        && d.keys().hasAll(['displayName'])
+        && isString(d.displayName, 120)
+        && (!d.keys().hasAny(['email']) || isString(d.email, 200));
+    }
+
+    function validProfileUpdate(d, existing) {
+      return d.diff(existing).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt'])
+        && isString(d.displayName, 120)
+        && (!d.keys().hasAny(['email']) || isString(d.email, 200));
+    }
 
     match /users/{uid} {
-      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow read: if (isSignedIn() && request.auth.uid == uid) || isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == uid
+        && validProfileCreate(request.resource.data);
+      allow update: if isSignedIn() && request.auth.uid == uid
+        && validProfileUpdate(request.resource.data, resource.data);
+      allow delete: if false;
+      // Administrators retain full access to every profile.
       allow write: if isAdmin();
     }
 

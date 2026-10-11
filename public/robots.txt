@@ -4,6 +4,9 @@ Allow: /
 # The admin panel is private and must never be indexed or crawled.
 Disallow: /admin
 
+# The signed-in account page is private to each student.
+Disallow: /account
+
 # Canonical XML sitemap (generated at build time from the real route + resource
 # inventory).
 Sitemap: https://jntuh-notes.vercel.app/sitemap.xml

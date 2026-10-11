@@ -93,12 +93,6 @@ function routeDescriptors() {
   });
 }
 
-// The private admin area is a separate SPA mounted outside the public layout.
-// It is deliberately excluded from the public route inventory (no sitemap entry,
-// noindex), but it still needs real documents on disk: this project resolves
-// routes from static files, so an unknown path such as /admin/login would 404
-// before React Router ever runs. These documents exist only so deep links and
-// refreshes resolve; they are never linked from the public site.
 const ADMIN_ROUTES = [
   { path: "/admin", title: "Admin | JNTUH Notes" },
   { path: "/admin/login", title: "Admin Sign In | JNTUH Notes" },
@@ -106,6 +100,16 @@ const ADMIN_ROUTES = [
   { path: "/admin/analytics", title: "Visitor Analytics | JNTUH Notes" },
   { path: "/admin/pdf-activity", title: "PDF Activity | JNTUH Notes" },
   { path: "/admin/channels", title: "Social Channels | JNTUH Notes" },
+];
+
+// Student authentication pages. Like the admin documents these need real files
+// on disk (this host only serves paths backed by a file), but they are marked
+// noindex by seoFor() and are intentionally kept out of the sitemap.
+const AUTH_ROUTES = [
+  { kind: "signin", path: "/signin" },
+  { kind: "signup", path: "/signup" },
+  { kind: "forgot", path: "/forgot-password" },
+  { kind: "account", path: "/account" },
 ];
 
 function escapeHtml(value) {
@@ -172,6 +176,7 @@ function main() {
   const routes = routeDescriptors();
   let written = 0;
   let adminWritten = 0;
+  let authWritten = 0;
 
   for (const descriptor of routes) {
     const seo = seoFor(descriptor);
@@ -222,6 +227,27 @@ function main() {
     adminWritten += 1;
   }
 
+  // Student authentication documents. These use the real per-route SEO block
+  // (titles + metadata, marked noindex) so a hard refresh on /signin,
+  // /signup, /forgot-password or /account resolves with the right <head>.
+  for (const descriptor of AUTH_ROUTES) {
+    const html = template.replace(SEO_MARKERS, seoBlock(seoFor(descriptor)));
+    const parts = normalizePath(descriptor.path).split("/").filter(Boolean);
+
+    const dirIndex = join(DIST, ...parts);
+    mkdirSync(dirIndex, { recursive: true });
+    writeFileSync(join(dirIndex, "index.html"), html);
+
+    const flatFile = join(
+      DIST,
+      ...parts.slice(0, -1),
+      `${parts[parts.length - 1]}.html`
+    );
+    mkdirSync(dirname(flatFile), { recursive: true });
+    writeFileSync(flatFile, html);
+    authWritten += 1;
+  }
+
   // The search UI is a utility page: it gets a noindex document above but is
   // deliberately omitted from the sitemap.
   const urls = routes
@@ -237,7 +263,7 @@ function main() {
   writeFileSync(join(DIST, "sitemap.xml"), xml, "utf8");
 
   console.log(
-    `gen-seo: wrote ${written} route documents + ${adminWritten} admin documents and sitemap.xml (${urls.length} URLs).`
+    `gen-seo: wrote ${written} route documents + ${adminWritten} admin documents + ${authWritten} auth documents and sitemap.xml (${urls.length} URLs).`
   );
 }
 

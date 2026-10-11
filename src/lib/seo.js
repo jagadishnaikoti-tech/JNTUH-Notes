@@ -199,6 +199,29 @@ export function seoFor(desc) {
       description =
         "How JNTUH Notes handles local storage, third-party services and external document links.";
       break;
+    case "signin":
+      title = "Sign In | JNTUH Notes";
+      description =
+        "Sign in to your JNTUH Notes account to manage your profile and study tools.";
+      robots = NOINDEX_ROBOTS;
+      break;
+    case "signup":
+      title = "Create Account | JNTUH Notes";
+      description =
+        "Create a free JNTUH Notes account. Reading and downloading study material never requires an account.";
+      robots = NOINDEX_ROBOTS;
+      break;
+    case "forgot":
+      title = "Reset Password | JNTUH Notes";
+      description =
+        "Request a password reset link for your JNTUH Notes account.";
+      robots = NOINDEX_ROBOTS;
+      break;
+    case "account":
+      title = "Your Account | JNTUH Notes";
+      description = "Manage the details of your JNTUH Notes account.";
+      robots = "noindex, nofollow";
+      break;
     case "terms":
       title = "Terms & Conditions | JNTUH Notes";
       description =
@@ -289,6 +312,17 @@ export function buildCrumbs(desc) {
         home,
         { label: "Terms & Conditions", path: "/terms-and-conditions", current: true },
       ];
+    case "signin":
+      return [home, { label: "Sign in", path: "/signin", current: true }];
+    case "signup":
+      return [home, { label: "Create account", path: "/signup", current: true }];
+    case "forgot":
+      return [
+        home,
+        { label: "Reset password", path: "/forgot-password", current: true },
+      ];
+    case "account":
+      return [home, { label: "Your account", path: "/account", current: true }];
     default:
       return [home, { label: "Page not found", path: desc.path, current: true }];
   }

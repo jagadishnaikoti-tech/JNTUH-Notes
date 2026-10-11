@@ -4,6 +4,7 @@ import { useSidebar } from "./SidebarContext.jsx";
 import Breadcrumbs from "./Breadcrumbs.jsx";
 import SearchBar from "./SearchBar.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
+import AuthNav from "./AuthNav.jsx";
 
 export default function Header() {
   const { toggleMobile, mobileOpen } = useSidebar();
@@ -30,7 +31,10 @@ export default function Header() {
           <SearchBar id="header-search" compact />
         </div>
 
-        <ThemeToggle />
+        <div className="header-actions">
+          <AuthNav />
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   );
