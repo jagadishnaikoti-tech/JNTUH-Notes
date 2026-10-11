@@ -273,7 +273,8 @@ src/
   App.jsx                  # shell (sidebar + header + routed content)
   main.jsx
 scripts/
-  gen-seo.mjs              # prerendered route docs + sitemap.xml
+  gen-seo.mjs              # prerendered route docs (public + admin) + sitemap.xml
+  create-admin.mjs         # create an Auth user and grant the `admin` claim
   set-admin.mjs            # grant/revoke the `admin` custom claim
 tools/                     # data pipeline (crawl, reports, verification, favicon)
 docs/ADMIN_SETUP.md        # Firebase/Vercel admin & analytics setup guide

@@ -14,7 +14,7 @@ the parts that require your Firebase/Vercel account.
 | Admin login / dashboard / analytics / PDF activity / channels | `/admin/*` (lazy-loaded, separate from the public layout) |
 | Public page-view + PDF click tracking | `src/lib/analytics.js`, `src/components/analytics/*` |
 | Firestore security rules | `firestore.rules` (deploy with `npm run deploy:rules`) |
-| First-admin provisioning script | `scripts/set-admin.mjs` (`npm run admin:grant -- <email>`) |
+| Admin provisioning scripts | `scripts/create-admin.mjs` (`npm run admin:create -- <email>` creates the user **and** grants the claim) and `scripts/set-admin.mjs` (`npm run admin:grant -- <email>` grant / `--remove` revoke) |
 | Social channels in the public sidebar & footer | `src/components/SocialChannels.jsx` |
 | Client config | `.env.example` → copy to `.env.local` / Vercel env vars |
 
@@ -66,17 +66,33 @@ Administrator rights come from a **custom claim** (`admin == true`) on the
 Firebase Auth user. There is no self-service path — an account alone grants
 nothing.
 
+First download a **service-account key** (one time):
+Firebase Console → ⚙ **Project settings → Service accounts → Generate new private key**.
+Save the JSON somewhere **outside** the repo, e.g. `C:\keys\jntuh-notes-admin.json`.
+
+> Never commit this file. `.gitignore` already blocks `serviceAccount*.json`
+> and `*firebase-adminsdk*.json`.
+
+### Option A — create the account and grant the claim from the CLI (one step)
+
+The password is read from the `ADMIN_PASSWORD` environment variable, so it never
+lands in shell history, in Firestore, or in the repository.
+
+```powershell
+$env:GOOGLE_APPLICATION_CREDENTIALS = "C:\keys\jntuh-notes-admin.json"
+$env:ADMIN_PASSWORD = "<choose-a-strong-password>"
+npm run admin:create -- admin@example.com
+```
+
+Re-running for an existing account simply re-applies the `admin` claim; add
+`--reset-password` (with `ADMIN_PASSWORD` set) to change its password too.
+
+### Option B — create the account in the console, then grant the claim
+
 1. **Create the account** in Firebase Console → **Authentication → Users → Add user**
    (email + password). Note the exact email.
 
-2. **Download a service-account key** (one time):
-   Firebase Console → ⚙ **Project settings → Service accounts → Generate new private key**.
-   Save the JSON somewhere **outside** the repo, e.g. `C:\keys\jntuh-notes-admin.json`.
-
-   > Never commit this file. `.gitignore` already blocks `serviceAccount*.json`
-   > and `*firebase-adminsdk*.json`.
-
-3. **Grant the claim** (PowerShell example):
+2. **Grant the claim** (PowerShell example):
 
    ```powershell
    $env:GOOGLE_APPLICATION_CREDENTIALS = "C:\keys\jntuh-notes-admin.json"
@@ -85,8 +101,8 @@ nothing.
 
    To revoke: `npm run admin:grant -- admin@example.com --remove`
 
-4. **Sign in** at `/admin/login`. The account must sign out/in after the claim
-   changes so the token is refreshed.
+The account must **sign out and back in** after the claim changes so the token is
+refreshed. Then sign in at `/admin/login`.
 
 ---
 

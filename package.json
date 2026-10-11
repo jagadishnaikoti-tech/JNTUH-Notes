@@ -9,6 +9,7 @@
     "build": "vite build && node scripts/gen-seo.mjs",
     "preview": "vite preview",
     "seo": "node scripts/gen-seo.mjs",
+    "admin:create": "node scripts/create-admin.mjs",
     "admin:grant": "node scripts/set-admin.mjs",
     "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes"
   },
