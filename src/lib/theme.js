@@ -16,8 +16,8 @@ export const THEME_KEY = "ln:theme";
 export const DEFAULT_THEME = "dark";
 
 export const THEME_COLORS = {
-  light: "#fffbeb",
-  dark: "#16120f",
+  light: "#ffffff",
+  dark: "#14181f",
 };
 
 /** The saved choice, or null when the user has never chosen. */
@@ -41,7 +41,8 @@ export function applyTheme(theme) {
   root.setAttribute("data-theme", theme);
   root.style.colorScheme = theme;
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", THEME_COLORS[theme] || THEME_COLORS.light);
+  if (meta)
+    meta.setAttribute("content", THEME_COLORS[theme] || THEME_COLORS[DEFAULT_THEME]);
 }
 
 /** Persist the user's explicit choice. */

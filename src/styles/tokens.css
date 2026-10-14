@@ -1,83 +1,97 @@
 /* =========================================================================
    JNTUH Notes - Design tokens
-   Generated with the UI/UX Pro Max skill (design-system output for an
-   education / academic document library).
+   UI/UX Pro Max · "Claymorphism / Educational Platform" design language.
 
-   Style ......... Swiss Modernism 2.0  (grid system, modular, rational,
-                   clean, mathematical spacing)
-   Palette ....... "Book brown + page amber"  (warm parchment + amber + walnut)
-   Typography .... Cormorant Garamond (headings) + Crimson Pro (body),
-                   Cinzel for the brand wordmark, Atkinson Hyperlegible for
-                   UI chrome / small labels (accessibility recommendation).
+   Style ......... Claymorphism (soft 3D, chunky, playful, thick borders,
+                   24px radii, hard offset shadows, "block" press feedback)
+   Palette ....... Coral (#FDBCB4) + Sky (#ADD8E6) + Green CTA (#22C55E),
+                   ink #2D3748 on white / warm-cream surfaces.
+   Typography .... Fredoka (headings) + DM Sans (body & interface).
 
-   Every value below traces back to the skill's MASTER.md or to one of the
-   supporting domain searches (ux, icons, typography, react).
+   Values mirror the reference demo's own component CSS, with the project's
+   token table as the source of truth for the colour roles. Loaded from <link>
+   tags in index.html (preconnect + stylesheet) so the fonts start in parallel
+   with the app bundle instead of blocking on an @import chain.
    ========================================================================= */
-
-/* Fonts are loaded from <link> tags in index.html (preconnect + stylesheet)
-   so they start in parallel with the app bundle instead of blocking on an
-   @import chain inside this stylesheet. */
 
 :root {
   color-scheme: light;
 
-  /* ---- Color: book brown + page amber -------------------------------- */
-  --color-primary: #78716c;
-  --color-on-primary: #ffffff;
-  --color-secondary: #92400e;
-  --color-on-secondary: #ffffff;
-  --color-accent: #d97706;
-  --color-on-accent: #1c1917;
-  --color-background: #fffbeb;
-  --color-foreground: #0f172a;
-  --color-card: #ffffff;
-  --color-card-foreground: #0f172a;
-  --color-muted: #f6f6f6;
-  --color-muted-foreground: #475569;
-  --color-border: #eeeded;
-  --color-destructive: #dc2626;
-  --color-on-destructive: #ffffff;
-  --color-ring: #78716c;
+  /* ---- Colour: claymorphism educational palette ----------------------- */
+  --clay-primary: #fdbcb4; /* coral-pink surfaces & accents */
+  --clay-primary-dark: #f5a69d;
+  --clay-primary-soft: #fff1ee;
+  --clay-secondary: #add8e6; /* sky-blue surfaces & highlights */
+  --clay-secondary-dark: #8bc4d6;
+  --clay-secondary-soft: #ebf7fb;
+  --clay-cta: #22c55e; /* important actions / positive states */
+  --clay-cta-dark: #16a34a;
+  --clay-cta-soft: #dcfce7;
+  /* Ink on the bright green CTA keeps 5.2:1; white would only reach 2.3:1. */
+  --clay-on-cta: #2d3748;
+  --clay-mint: #98ff98;
+  --clay-purple: #e6e6fa;
+  --clay-amber: #fde68a;
 
-  /* Extended (derived from the palette above) */
-  --color-surface: #fffdf5;
-  --color-border-strong: #ddd6c9;
-  --color-accent-soft: #fdf0dc;
-  --color-success: #15803d;
-  --color-success-soft: #ecfdf3;
-  --color-warning-soft: #fff7e6;
-  --color-warning-border: #f3d9a6;
-  --color-warning-fg: #7c4a03;
+  --clay-ink: #2d3748; /* headings & primary text */
+  --clay-ink-soft: #4a5568;
+  --clay-body: #64748b; /* descriptions & secondary text */
+  --clay-bg: #ffffff; /* main page canvas */
+  --clay-surface: #fff8f6; /* warm card / supporting backgrounds */
+  --clay-surface-2: #f8fafc;
+  --clay-border: #e8e8ed; /* dividers, card & input borders */
+  --clay-border-strong: #d6d9e0;
 
-  /* ---- Sidebar (deep walnut study-desk surface) ----------------------- */
-  --sidebar-bg: #241a12;
-  --sidebar-bg-elev: #2f2317;
-  --sidebar-fg: #efe7db;
-  --sidebar-fg-muted: #b7a895;
-  --sidebar-border: rgba(255, 255, 255, 0.1);
-  --sidebar-hover-bg: rgba(255, 255, 255, 0.07);
-  --sidebar-active-bg: #d97706;
-  --sidebar-active-fg: #1c1917;
+  /* The line colour used for the chunky clay borders and hard offset
+     shadows. In the light theme this is the ink colour itself. */
+  --clay-line: #2d3748;
+
+  --clay-success: #22c55e;
+  --clay-success-ink: #15803d;
+  --clay-success-soft: #dcfce7;
+  --clay-warning: #f59e0b;
+  --clay-warning-ink: #b45309;
+  --clay-warning-soft: #fef3c7;
+  --clay-error: #ef4444;
+  --clay-error-ink: #b91c1c;
+  --clay-error-soft: #fee2e2;
+  --clay-info: #64748b;
+  --clay-info-soft: #eef2f7;
+
+  /* Focus ring: the ink colour keeps the chunky, on-brand look while
+     comfortably exceeding the 3:1 non-text contrast requirement. */
+  --clay-ring: #2d3748;
+
+  /* ---- Clay depth ----------------------------------------------------- */
+  --clay-bw: 3px; /* card / button border weight */
+  --clay-bw-sm: 2px; /* inputs, chips, small controls */
+  --clay-shadow: 6px 6px 0 var(--clay-line), inset 0 -4px 0 rgba(0, 0, 0, 0.06);
+  --clay-shadow-hover: 3px 3px 0 var(--clay-line), inset 0 -4px 0 rgba(0, 0, 0, 0.06);
+  --clay-shadow-sm: 4px 4px 0 var(--clay-line);
+  --clay-shadow-sm-hover: 2px 2px 0 var(--clay-line);
+  --clay-shadow-xs: 3px 3px 0 var(--clay-line);
+  --clay-shadow-soft: 0 8px 30px rgba(45, 55, 72, 0.08), inset 0 -4px 0 rgba(0, 0, 0, 0.04);
+  --clay-shadow-pop: 0 18px 40px rgba(45, 55, 72, 0.18);
 
   /* ---- Typography ----------------------------------------------------- */
-  --font-display: "Cormorant Garamond", Georgia, "Times New Roman", serif;
-  --font-brand: "Cinzel", "Cormorant Garamond", Georgia, serif;
-  --font-body: "Crimson Pro", Georgia, "Times New Roman", serif;
-  --font-ui: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI",
-    Roboto, sans-serif;
+  --font-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
+  --font-brand: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
+  --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-ui: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
-  /* Modular type scale (1.200 minor third, rem) */
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: 1.375rem;
-  --text-2xl: 1.75rem;
-  --text-3xl: 2.25rem;
-  --text-4xl: 3rem;
-  --text-5xl: 3.75rem;
+  /* Type scale (px targets in comments) */
+  --text-xs: 0.75rem; /* 12 - labels */
+  --text-sm: 0.8125rem; /* 13 - supporting labels */
+  --text-base: 0.9375rem; /* 15 - body small */
+  --text-md: 1rem; /* 16 - body */
+  --text-lg: 1.125rem; /* 18 - body large */
+  --text-xl: 1.375rem; /* 22 - card headings */
+  --text-2xl: 1.75rem; /* 28 - section headings */
+  --text-3xl: 2.25rem; /* 36 - section headings / page titles */
+  --text-4xl: 2.75rem; /* 44 - hero heading */
+  --text-5xl: 3.5rem; /* 56 - hero heading (large desktop) */
 
-  /* ---- Spacing (mathematical scale from the skill) -------------------- */
+  /* ---- Spacing -------------------------------------------------------- */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
@@ -87,27 +101,29 @@
   --space-3xl: 64px;
 
   /* ---- Radii ---------------------------------------------------------- */
-  --radius-sm: 6px;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-sm: 10px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-clay: 24px;
   --radius-pill: 999px;
 
-  /* ---- Shadow depths -------------------------------------------------- */
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow-md: 0 4px 6px rgba(15, 23, 42, 0.08);
-  --shadow-lg: 0 10px 15px rgba(15, 23, 42, 0.1);
-  --shadow-xl: 0 20px 25px rgba(15, 23, 42, 0.15);
+  /* ---- Shadow depths (soft, non-clay contexts) ------------------------ */
+  --shadow-sm: 0 1px 2px rgba(45, 55, 72, 0.06);
+  --shadow-md: 0 4px 10px rgba(45, 55, 72, 0.08);
+  --shadow-lg: 0 10px 20px rgba(45, 55, 72, 0.12);
+  --shadow-xl: 0 24px 48px rgba(45, 55, 72, 0.22);
 
-  /* ---- Motion (150-300ms, per the skill) ------------------------------ */
+  /* ---- Motion (150-300ms) --------------------------------------------- */
   --motion-fast: 150ms ease;
   --motion: 200ms ease;
   --motion-slow: 300ms ease;
+  --ease-clay: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /* ---- Layout --------------------------------------------------------- */
-  --sidebar-width: 272px;
-  --sidebar-collapsed-width: 76px;
-  --header-height: 66px;
+  --sidebar-width: 276px;
+  --sidebar-collapsed-width: 78px;
+  --header-height: 72px;
   --content-max: 1200px;
 
   /* ---- Z-index scale -------------------------------------------------- */
@@ -115,52 +131,101 @@
   --z-drawer: 60;
   --z-overlay: 55;
   --z-modal: 100;
+
+  /* ---------------------------------------------------------------------
+     Legacy semantic aliases. These keep every historical variable name
+     resolving to the new clay tokens so no stray reference can break.
+     --------------------------------------------------------------------- */
+  --color-primary: var(--clay-primary);
+  --color-on-primary: var(--clay-ink);
+  --color-secondary: var(--clay-secondary);
+  --color-on-secondary: var(--clay-ink);
+  --color-accent: var(--clay-cta);
+  --color-on-accent: #ffffff;
+  --color-background: var(--clay-bg);
+  --color-foreground: var(--clay-ink);
+  --color-card: var(--clay-bg);
+  --color-card-foreground: var(--clay-ink);
+  --color-muted: var(--clay-surface-2);
+  --color-muted-foreground: var(--clay-body);
+  --color-border: var(--clay-border);
+  --color-border-strong: var(--clay-border-strong);
+  --color-destructive: var(--clay-error);
+  --color-on-destructive: #ffffff;
+  --color-ring: var(--clay-ring);
+  --color-surface: var(--clay-surface);
+  --color-accent-soft: var(--clay-primary-soft);
+  --color-success: var(--clay-success-ink);
+  --color-success-soft: var(--clay-success-soft);
+  --color-warning-soft: var(--clay-warning-soft);
+  --color-warning-border: var(--clay-warning);
+  --color-warning-fg: var(--clay-warning-ink);
+  --sidebar-bg: var(--clay-bg);
+  --sidebar-fg: var(--clay-ink);
+  --sidebar-fg-muted: var(--clay-body);
 }
 
 /* -------------------------------------------------------------------------
    Dark theme ("study at night").
-   Same warm walnut/amber language as the light theme, inverted onto a deep
-   warm-charcoal surface. Chosen (not pure black/OLED) to stay consistent with
-   the brand; every text/background pair still meets WCAG AA (verified).
-   Applied via <html data-theme="dark">.
+   The same claymorphism language: cards sit slightly above a deep ink canvas
+   with near-black chunky borders and hard offset shadows, while coral, sky and
+   the green CTA are preserved as the brand accents. Every text/surface pair
+   still meets WCAG AA (verified). Applied via <html data-theme="dark">.
    ------------------------------------------------------------------------- */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --color-primary: #c9beb0;
-  --color-on-primary: #1a1512;
-  --color-secondary: #f3b968;
-  --color-on-secondary: #1a1512;
-  --color-accent: #e08a1e;
-  --color-on-accent: #1a1512;
-  --color-background: #16120f;
-  --color-foreground: #f2ece2;
-  --color-card: #201a15;
-  --color-card-foreground: #f2ece2;
-  --color-muted: #2a221b;
-  --color-muted-foreground: #b8ab99;
-  --color-border: #33291f;
-  --color-destructive: #f87171;
-  --color-on-destructive: #1a1512;
-  --color-ring: #e08a1e;
+  --clay-primary: #f6a79c;
+  --clay-primary-dark: #ee8d80;
+  --clay-primary-soft: #3a2622;
+  --clay-secondary: #9ccfe0;
+  --clay-secondary-dark: #7dbccf;
+  --clay-secondary-soft: #1c2f37;
+  --clay-cta: #34d06a;
+  --clay-cta-dark: #22c55e;
+  --clay-cta-soft: #12301e;
+  --clay-mint: #6fd6a0;
+  /* Accent "chip" tints stay light in both themes: their glyphs are drawn in
+     the fixed dark ink (#2d3748), so a dark chip would hide the icon. */
+  --clay-purple: #c9c7ea;
+  --clay-amber: #5a4a1c;
 
-  --color-surface: #1c1611;
-  --color-border-strong: #4a3c2e;
-  --color-accent-soft: #3a2a15;
-  --color-success: #4ade80;
-  --color-success-soft: #14291b;
-  --color-warning-soft: #3a2a10;
-  --color-warning-border: #6b4e1f;
-  --color-warning-fg: #f3d9a6;
+  --clay-ink: #f2f5fa;
+  --clay-ink-soft: #cdd5e1;
+  --clay-body: #a7b2c2;
+  --clay-bg: #14181f;
+  --clay-surface: #1b2029;
+  --clay-surface-2: #202632;
+  --clay-border: #2c3441;
+  --clay-border-strong: #3a4453;
+  --clay-line: #05070a;
 
-  --sidebar-bg: #1d150f;
-  --sidebar-bg-elev: #271d14;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --clay-success: #34d06a;
+  --clay-success-ink: #6ee7a0;
+  --clay-success-soft: #12301e;
+  --clay-warning: #f6b73c;
+  --clay-warning-ink: #fcd68a;
+  --clay-warning-soft: #382a10;
+  --clay-error: #f87171;
+  --clay-error-ink: #fca5a5;
+  --clay-error-soft: #3a1d1d;
+  --clay-info: #a7b2c2;
+  --clay-info-soft: #202632;
+
+  --clay-ring: #f2f5fa;
+
+  --clay-shadow: 6px 6px 0 var(--clay-line), inset 0 -4px 0 rgba(255, 255, 255, 0.04);
+  --clay-shadow-hover: 3px 3px 0 var(--clay-line), inset 0 -4px 0 rgba(255, 255, 255, 0.04);
+  --clay-shadow-sm: 4px 4px 0 var(--clay-line);
+  --clay-shadow-sm-hover: 2px 2px 0 var(--clay-line);
+  --clay-shadow-xs: 3px 3px 0 var(--clay-line);
+  --clay-shadow-soft: 0 8px 30px rgba(0, 0, 0, 0.4), inset 0 -4px 0 rgba(255, 255, 255, 0.03);
+  --clay-shadow-pop: 0 18px 40px rgba(0, 0, 0, 0.55);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.45);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.55);
+  --shadow-md: 0 4px 10px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.6);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, Outlet, useLocation } from "react-router-dom";
+import { Loader2 } from "lucide-react";
 import Sidebar from "./components/Sidebar.jsx";
 import Header from "./components/Header.jsx";
 import SearchShortcut from "./components/SearchShortcut.jsx";
@@ -79,16 +80,10 @@ function PublicLayout() {
 
 function AdminFallback() {
   return (
-    <div
-      role="status"
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        fontFamily: "system-ui, sans-serif",
-        color: "#78716c",
-      }}
-    >
+    <div className="route-loading" role="status" aria-live="polite">
+      <span className="route-loading-mark" aria-hidden="true">
+        <Loader2 size={24} />
+      </span>
       Loading administration…
     </div>
   );

@@ -22,8 +22,7 @@ invented.
 - **Lucide React** (single SVG icon set)
 - Plain **CSS3** with a token-based design system:
   `src/styles/tokens.css` (tokens) + `src/styles/global.css` (components)
-- **Google Fonts**: Cormorant Garamond (headings), Crimson Pro (body),
-  Cinzel (brand wordmark), Atkinson Hyperlegible (UI chrome)
+- **Google Fonts**: Fredoka (headings), DM Sans (body & UI)
 
 No backend is required. All documents live on public Google Drive folders and are
 linked with their original URLs.
@@ -106,8 +105,8 @@ the search moves to a full-width second row.
 
 ### Light and dark mode
 
-A header toggle switches the whole palette between the warm parchment light
-theme and a warm-charcoal dark theme. **Dark is the default**; once the visitor
+A header toggle switches the whole palette between the deep-ink **clay dark**
+theme (the default) and a warm cream clay light theme. Once the visitor
 uses the toggle the choice is stored in `localStorage` (`ln:theme`) and wins on
 later visits. An inline script in `index.html` applies the saved theme before the
 first paint (no flash), and the browser `theme-color` is kept in sync. Both
@@ -226,24 +225,27 @@ in [`docs/ADMIN_SETUP.md`](docs/ADMIN_SETUP.md).
 
 ## Design system
 
-The visual language is a restrained academic system (warm parchment + amber/brown,
-Swiss-style grid and spacing), initially produced with the **UI/UX Pro Max**
-design-intelligence skill and persisted to
-`design-system/lecture-notes/MASTER.md`. Key values:
+The visual language is a friendly **Claymorphism** system for an academic
+product — chunky ink borders, 24px radii and hard offset shadows over a warm
+cream canvas, with coral, sky and green accents. It was redesigned to match the
+UI/UX Pro Max "Educational Platform" reference, with the palette and typography
+set from the project's token table. Key values:
 
 | Decision | Value |
 | --- | --- |
-| **UI style** | Swiss Modernism — grid system, modular, rational spacing |
-| **Palette** | primary `#78716C`, secondary `#92400E`, accent `#D97706`, background `#FFFBEB`, foreground `#0F172A` |
-| **Typography** | Cormorant Garamond (headings) + Crimson Pro (body); Cinzel wordmark; Atkinson Hyperlegible for UI labels |
+| **UI style** | Claymorphism — chunky ink borders, 16–24px radii, hard offset shadows, "block press" hover feedback |
+| **Palette** | primary (coral) `#FDBCB4`, secondary (sky) `#ADD8E6`, CTA/success `#22C55E`, heading/ink `#2D3748`, body `#64748B`, border `#E8E8ED`, canvas `#FFFFFF`, surface `#FFF8F6`, warning `#F59E0B`, error `#EF4444` |
+| **Typography** | Fredoka (headings) + DM Sans (body & UI) |
+| **Type ladder** | ~44–60px hero / 28–36px section / 18–24px card / 15–18px body / 12–14px labels |
 | **Spacing** | 4 / 8 / 16 / 24 / 32 / 48 / 64 px scale |
-| **Radii** | 6 / 8 / 12 / 16 px (buttons and controls use moderate radii, not pills) |
-| **Shadows** | 4-step depth scale |
+| **Radii** | 10 / 12 / 16 / 20 / 24 px (pills for chips and badges) |
+| **Shadows** | Hard offset ink shadows (`6px`/`4px`/`3px`) plus a soft inset for clay depth |
 | **Motion** | 150–300 ms transitions, `prefers-reduced-motion` honoured |
 | **Icons** | Lucide (one consistent set) |
 
-Every token lives in `:root`, so the whole visual language can be retuned from one
-place. All text/background pairs exceed **WCAG AA** contrast.
+Every token lives in `:root` (with a full `:root[data-theme="dark"]` override), so
+the whole visual language can be retuned from one place. All text/background pairs
+meet **WCAG AA** contrast (Lighthouse accessibility 1.0 on the public pages).
 
 ---
 

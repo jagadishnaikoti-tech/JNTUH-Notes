@@ -41,7 +41,7 @@
 
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#fffbeb" />
+    <meta name="theme-color" content="#14181f" />
 
     <!-- Route-specific SEO tags. Defaults target the homepage; the production
          build rewrites everything between the seo:start / seo:end markers for
@@ -90,11 +90,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&amp;family=Cinzel:wght@400;500;600;700&amp;family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&amp;family=Crimson+Pro:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&amp;display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&amp;family=Fredoka:wght@400..700&amp;display=swap"
     />
 
     <!-- Apply the saved theme before paint to avoid a flash of the wrong mode.
-         The site default is dark; the visitor's explicit choice wins. -->
+         The site default is dark (the deep-ink clay canvas); the visitor's
+         explicit choice wins. -->
     <script>
       (function () {
         try {
@@ -108,7 +109,7 @@
           if (meta)
             meta.setAttribute(
               "content",
-              theme === "dark" ? "#16120f" : "#fffbeb"
+              theme === "dark" ? "#14181f" : "#ffffff"
             );
         } catch (e) {}
       })();

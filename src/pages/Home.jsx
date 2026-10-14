@@ -61,6 +61,12 @@ const QUICK_LINKS = [
   },
 ];
 
+/** Real counts derived from the crawled inventory - never invented numbers. */
+const TOTAL_SUBJECTS = YEARS.reduce(
+  (sum, year) => sum + getYearStats(year).subjects,
+  0
+);
+
 export default function Home() {
   return (
     <main className="page-main">
@@ -94,6 +100,21 @@ export default function Home() {
             <Search size={18} aria-hidden="true" />
             Search Study Materials
           </Link>
+        </div>
+
+        <div className="banner-stats hero-stats">
+          <div className="stat">
+            <span className="stat-value">{resources.totals.files}</span>
+            <span className="stat-label">Documents</span>
+          </div>
+          <div className="stat">
+            <span className="stat-value">{TOTAL_SUBJECTS}</span>
+            <span className="stat-label">Subject folders</span>
+          </div>
+          <div className="stat">
+            <span className="stat-value">{YEARS.length}</span>
+            <span className="stat-label">Academic years</span>
+          </div>
         </div>
 
         <p className="hero-note">{SITE.navNote}</p>

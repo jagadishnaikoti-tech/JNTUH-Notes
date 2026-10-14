@@ -1,5 +1,12 @@
 # Design System Master File
 
+> **SUPERSEDED (2026-10-14).** This file describes an earlier "Swiss Modernism /
+> parchment + amber" direction that is **no longer used**. The live design system
+> is **Claymorphism** — Fredoka + DM Sans over a coral/sky/green palette — and is
+> implemented in `src/styles/tokens.css` (tokens) and the component stylesheets
+> (`global.css`, `auth.css`, `admin.css`). Treat `tokens.css` as the source of
+> truth and disregard the colour/typography values below.
+
 > **LOGIC:** When building a specific page, first check `design-system/pages/[page-name].md`.
 > If that file exists, its rules **override** this Master file.
 > If not, strictly follow the rules below.
