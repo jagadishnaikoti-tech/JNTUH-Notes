@@ -76,9 +76,10 @@ export default function Home() {
           JNTUH Notes and Exam Preparation Resources
         </h1>
         <p className="hero-tagline">
-          {SITE.tagline} Browse subject notes, important and guaranteed
-          questions, short questions and previous question papers, each linked
-          to its original document.
+          {SITE.tagline}{" "}
+          <span className="hero-tagline-highlight">
+            Prepare smarter, score better!
+          </span>
         </p>
 
         <ul className="hero-meta">

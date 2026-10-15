@@ -45,7 +45,7 @@ export const SITE = {
   developer: "Jagadish",
   heading: "JNTUH Notes",
   tagline:
-    "Organised B.Tech CSE & AIML study material for the JNTUH R22 regulation.",
+    "Your one-stop hub for JNTUH R22 CSE, AIML & AIDS! Get notes, important questions, and previous papers.",
   meta: [
     "Course: B.Tech",
     "Branch: CSE & AIML",

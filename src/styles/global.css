@@ -943,6 +943,19 @@ a.crumb:hover {
   font-size: var(--text-lg);
 }
 
+/* The closing call to action reads as a clay "highlighter" so it stands out
+   from the muted body copy. Theme-aware soft green with matching ink keeps it
+   at AA contrast in both light and dark. */
+.hero-tagline-highlight {
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: var(--clay-cta-soft);
+  color: var(--clay-success-ink);
+  font-weight: 700;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 .hero-meta {
   display: flex;
   flex-wrap: wrap;
