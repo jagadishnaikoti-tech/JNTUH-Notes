@@ -59,6 +59,19 @@ function isHttpUrl(value) {
   }
 }
 
+/**
+ * Force the scheme to lower case. `new URL()` accepts `HTTPS://…` but the
+ * rules require `sourceUrl.matches('^https?://.+')`, which is case-sensitive,
+ * so normalising here keeps the client validation and the authoritative rules
+ * in agreement instead of surfacing as an opaque permission error.
+ */
+function normaliseHttpUrl(value) {
+  return cleanText(value, MAX_URL).replace(
+    /^(https?):\/\//i,
+    (_, scheme) => `${scheme.toLowerCase()}://`
+  );
+}
+
 function toDateOrNull(value) {
   if (value == null || value === "") return null;
   if (value instanceof Date) {
@@ -116,6 +129,17 @@ async function currentActor(app) {
   }
 }
 
+/**
+ * Re-throw with a user-safe message while preserving Firestore's `code`
+ * (e.g. `permission-denied`) so the admin UI can explain what actually
+ * failed instead of showing a generic failure.
+ */
+function userError(err, message) {
+  const wrapped = new Error(message);
+  if (err?.code) wrapped.code = err.code;
+  return wrapped;
+}
+
 // --- validation -------------------------------------------------------------
 
 /**
@@ -128,7 +152,7 @@ export function cleanAlert(data = {}) {
   const summary = cleanText(data.summary, MAX_SUMMARY);
   const category = cleanText(data.category, 40);
   const sourceName = cleanText(data.sourceName, MAX_SOURCE_NAME);
-  const sourceUrl = cleanText(data.sourceUrl, MAX_URL);
+  const sourceUrl = normaliseHttpUrl(data.sourceUrl);
 
   if (title.length < 3) {
     throw new Error("Please enter a title (at least 3 characters).");
@@ -220,7 +244,7 @@ export async function fetchAllAlerts() {
   return sortAlerts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
 }
 
-/** Admin: create an alert. Published alerts are stamped as verified. */
+/** Admin: create an alert. Every alert starts as an unverified draft. */
 export async function createAlert(input, actor = "") {
   const app = await getFirebaseApp();
   if (!app) throw new Error("Firebase is not configured.");
@@ -229,15 +253,20 @@ export async function createAlert(input, actor = "") {
   const db = getFirestore(app);
 
   const fields = cleanAlert(input);
-  const published = fields.status === ALERT_STATUS.PUBLISHED;
-  if (published && !fields.publishedAt) fields.publishedAt = new Date();
+  if (fields.status === ALERT_STATUS.PUBLISHED) {
+    // Verification is a deliberate act (verifyAlert) - never a side effect of
+    // creating or publishing, so a published doc always carries real metadata.
+    throw new Error(
+      "New alerts always start as drafts. Save it, verify it, then publish."
+    );
+  }
   const who = cleanText(actor, MAX_ACTOR) || (await currentActor(app));
 
   try {
     return await addDoc(collection(db, COLLECTION), {
       ...fields,
-      verifiedAt: published ? serverTimestamp() : null,
-      verifiedBy: published ? who : "",
+      verifiedAt: null,
+      verifiedBy: "",
       createdBy: who,
       updatedBy: who,
       createdAt: serverTimestamp(),
@@ -245,7 +274,7 @@ export async function createAlert(input, actor = "") {
     });
   } catch (err) {
     console.warn("[alerts] create failed:", err?.code || err);
-    throw new Error("Could not save the alert. Please try again.");
+    throw userError(err, "Could not save the alert. Please try again.");
   }
 }
 
@@ -268,12 +297,18 @@ export async function updateAlert(id, input, actor = "") {
     });
   } catch (err) {
     console.warn("[alerts] update failed:", err?.code || err);
-    throw new Error("Could not update the alert. Please try again.");
+    throw userError(err, "Could not update the alert. Please try again.");
   }
 }
 
-/** Admin: publish an alert and record who verified it. */
-export async function publishAlert(id, actor = "") {
+/**
+ * Admin: record that an alert was checked against the official source. This is
+ * deliberately separate from publishing, so a draft can be marked verified
+ * without becoming public and verification never happens as a side effect of
+ * another action. `verifiedAt` / `verifiedBy` are the Phase 0 fields for this;
+ * no schema change is required.
+ */
+export async function verifyAlert(id, actor = "") {
   const app = await getFirebaseApp();
   if (!app) throw new Error("Firebase is not configured.");
   const { getFirestore, doc, updateDoc, serverTimestamp } =
@@ -283,15 +318,61 @@ export async function publishAlert(id, actor = "") {
 
   try {
     await updateDoc(doc(db, COLLECTION, id), {
-      status: ALERT_STATUS.PUBLISHED,
       verifiedAt: serverTimestamp(),
       verifiedBy: who,
       updatedBy: who,
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
+    console.warn("[alerts] verify failed:", err?.code || err);
+    throw userError(err, "Could not record verification. Please try again.");
+  }
+}
+
+/**
+ * Admin: publish an alert. Publishing is only offered after verification and
+ * REQUIRES it: an unverified notice is refused rather than stamped, so
+ * `verifiedAt` / `verifiedBy` are only ever written by verifyAlert(). The rules
+ * enforce the same invariant server-side (published => valid verification
+ * metadata).
+ */
+export async function publishAlert(id, actor = "") {
+  const app = await getFirebaseApp();
+  if (!app) throw new Error("Firebase is not configured.");
+  const { getFirestore, doc, getDoc, updateDoc, serverTimestamp } =
+    await loadFirestore();
+  const db = getFirestore(app);
+  const who = cleanText(actor, MAX_ACTOR) || (await currentActor(app));
+  const ref = doc(db, COLLECTION, id);
+
+  let existing;
+  try {
+    const snap = await getDoc(ref);
+    existing = snap.exists() ? snap.data() : null;
+  } catch (err) {
+    console.warn("[alerts] publish read failed:", err?.code || err);
+    throw userError(err, "Could not read the alert. Please try again.");
+  }
+
+  // Thrown outside the catch blocks below so the message reaches the UI intact.
+  if (!existing) {
+    throw new Error("This alert no longer exists. Refresh the list and try again.");
+  }
+  if (!existing.verifiedAt) {
+    throw new Error(
+      "Verify this alert against the official source before publishing it."
+    );
+  }
+
+  try {
+    await updateDoc(ref, {
+      status: ALERT_STATUS.PUBLISHED,
+      updatedBy: who,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
     console.warn("[alerts] publish failed:", err?.code || err);
-    throw new Error("Could not publish the alert. Please try again.");
+    throw userError(err, "Could not publish the alert. Please try again.");
   }
 }
 
@@ -312,7 +393,7 @@ export async function unpublishAlert(id, actor = "") {
     });
   } catch (err) {
     console.warn("[alerts] unpublish failed:", err?.code || err);
-    throw new Error("Could not unpublish the alert. Please try again.");
+    throw userError(err, "Could not unpublish the alert. Please try again.");
   }
 }
 
@@ -327,6 +408,6 @@ export async function deleteAlert(id) {
     return await deleteDoc(doc(db, COLLECTION, id));
   } catch (err) {
     console.warn("[alerts] delete failed:", err?.code || err);
-    throw new Error("Could not delete the alert. Please try again.");
+    throw userError(err, "Could not delete the alert. Please try again.");
   }
 }

@@ -128,6 +128,14 @@ service cloud.firestore {
         && (!d.keys().hasAny(['verifiedAt']) || d.verifiedAt == null
               || d.verifiedAt is timestamp)
         && (!d.keys().hasAny(['verifiedBy']) || isString(d.verifiedBy, 200))
+        // Hardening: a PUBLISHED alert must carry verification metadata -
+        // verifiedAt is a real timestamp and verifiedBy a non-empty actor.
+        // verifyAlert() is the only writer of these fields; publishing never
+        // stamps them (src/lib/alerts.js publishAlert refuses instead).
+        && (d.status != 'published'
+              || (d.keys().hasAll(['verifiedAt', 'verifiedBy'])
+                    && d.verifiedAt is timestamp
+                    && isString(d.verifiedBy, 200) && d.verifiedBy.size() >= 1))
         && (!d.keys().hasAny(['audience']) || d.audience is list)
         && (!d.keys().hasAny(['tags']) || d.tags is list);
     }

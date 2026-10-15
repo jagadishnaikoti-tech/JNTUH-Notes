@@ -8,6 +8,7 @@ import AdminDashboard from "./AdminDashboard.jsx";
 import AdminAnalytics from "./AdminAnalytics.jsx";
 import AdminPdfActivity from "./AdminPdfActivity.jsx";
 import AdminChannels from "./AdminChannels.jsx";
+import AdminAlerts from "./AdminAlerts.jsx";
 
 /** Keep the admin area out of search engines while it is mounted. */
 function useAdminHead() {
@@ -40,6 +41,7 @@ export default function AdminApp() {
             <Route path="analytics" element={<AdminAnalytics />} />
             <Route path="pdf-activity" element={<AdminPdfActivity />} />
             <Route path="channels" element={<AdminChannels />} />
+            <Route path="alerts" element={<AdminAlerts />} />
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="dashboard" replace />} />

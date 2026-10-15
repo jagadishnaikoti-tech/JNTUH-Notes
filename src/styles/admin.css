@@ -1224,6 +1224,135 @@
   background: var(--clay-primary);
 }
 
+/* ----------------------------------------------------------------- Alerts */
+.admin-alerts-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-md);
+}
+
+.admin-alerts-form .admin-field-wide,
+.admin-alerts-form .admin-form-actions,
+.admin-alerts-form .admin-form-error,
+.admin-alerts-form .admin-flash {
+  grid-column: 1 / -1;
+}
+
+.admin-alerts-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.admin-check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+.admin-alert-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-alert-sources .admin-ghost {
+  min-height: 38px;
+  padding: 4px 11px;
+}
+
+.admin-flash {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  padding: 10px 14px;
+  border: var(--clay-bw-sm) solid var(--clay-success-ink);
+  border-radius: var(--radius);
+  background: var(--clay-success-soft);
+  color: var(--clay-success-ink);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.admin-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-alert-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-md);
+  padding: 14px 16px;
+  border: var(--clay-bw-sm) solid var(--clay-line);
+  border-radius: var(--radius-lg);
+  background: var(--clay-bg);
+  box-shadow: var(--clay-shadow-xs);
+}
+
+.admin-alert-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-alert-summary {
+  margin-top: 2px;
+}
+
+.admin-alert-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+
+.admin-alert-meta .admin-subtext {
+  display: inline;
+}
+
+.admin-alert-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: none;
+}
+
+.admin-alert-actions .admin-ghost,
+.admin-alert-actions .admin-primary {
+  min-height: 38px;
+  padding: 4px 11px;
+}
+
+.admin-pill-verified {
+  background: var(--clay-secondary);
+  color: #2d3748;
+}
+
+.admin-pill-unverified {
+  background: var(--clay-warning-soft);
+  color: var(--clay-warning-ink);
+}
+
+.admin-pill-pinned {
+  background: var(--clay-primary);
+  color: #2d3748;
+}
+
+@media (max-width: 760px) {
+  .admin-alert-row {
+    flex-wrap: wrap;
+  }
+
+  .admin-alert-actions {
+    width: 100%;
+  }
+}
+
 /* ------------------------------------------------------------ Responsive */
 @media (max-width: 860px) {
   .admin-sidebar {

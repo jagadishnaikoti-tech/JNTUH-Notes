@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   BarChart3,
+  BellRing,
   ExternalLink,
   LayoutDashboard,
   LogOut,
@@ -18,6 +19,7 @@ const NAV = [
   { to: "/admin/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/admin/pdf-activity", label: "PDF Activity", icon: MousePointerClick },
   { to: "/admin/channels", label: "Channels", icon: Share2 },
+  { to: "/admin/alerts", label: "Alerts", icon: BellRing },
 ];
 
 const TITLES = {
@@ -25,6 +27,7 @@ const TITLES = {
   "/admin/analytics": "Visitor Analytics",
   "/admin/pdf-activity": "PDF Activity",
   "/admin/channels": "Social Channels",
+  "/admin/alerts": "Alert Radar",
 };
 
 export default function AdminLayout() {
