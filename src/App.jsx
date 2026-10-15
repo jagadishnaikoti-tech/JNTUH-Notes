@@ -9,6 +9,7 @@ import { ModalProvider } from "./components/ModalContext.jsx";
 import { ToastProvider } from "./components/ToastContext.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import ScrollToTop from "./components/ScrollToTop.jsx";
+import ClickSounds from "./components/ClickSounds.jsx";
 import PageViewTracker from "./components/analytics/PageViewTracker.jsx";
 import PdfClickTracker from "./components/analytics/PdfClickTracker.jsx";
 import ConsentBanner from "./components/analytics/ConsentBanner.jsx";
@@ -92,6 +93,9 @@ function AdminFallback() {
 export default function App() {
   return (
     <ModalProvider>
+      {/* One delegated listener drives the subtle click sound for every control
+          (public chrome and admin alike). Renders nothing. */}
+      <ClickSounds />
       <ToastProvider>
         <SidebarProvider>
           <Routes>

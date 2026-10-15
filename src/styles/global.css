@@ -621,7 +621,8 @@ a.crumb:hover {
   justify-self: end;
 }
 
-.theme-toggle {
+.theme-toggle,
+.sound-toggle {
   display: grid;
   place-items: center;
   width: 44px;
@@ -636,10 +637,16 @@ a.crumb:hover {
     background-color var(--motion-fast);
 }
 
-.theme-toggle:hover {
+.theme-toggle:hover,
+.sound-toggle:hover {
   background: var(--clay-secondary);
   box-shadow: var(--clay-shadow-sm-hover);
   transform: translate(2px, 2px);
+}
+
+/* Muted icon once click sounds are switched off. */
+.sound-toggle[aria-pressed="false"] {
+  color: var(--clay-body);
 }
 
 /* -------------------------------------------------------------- Search bar */
@@ -3123,6 +3130,23 @@ a.crumb:hover {
   }
 }
 
+/* Keep the header (menu + brand + auth + theme/sound controls) on one line on
+   the smallest phones. Tap targets stay full size; only the spacing tightens. */
+@media (max-width: 400px) {
+  .header-inner {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .header-actions {
+    gap: 6px;
+  }
+
+  .auth-nav-cta {
+    padding: 0 8px;
+  }
+}
+
 @media (min-width: 1024px) {
   .sidebar-overlay {
     display: none !important;
@@ -3164,6 +3188,7 @@ a.crumb:hover {
   .sidebar-collapse:hover,
   .header-menu:hover,
   .theme-toggle:hover,
+  .sound-toggle:hover,
   .result-row.is-active,
   .result-row:focus-within,
   .qs-item:hover,

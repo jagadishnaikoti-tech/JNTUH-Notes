@@ -4,6 +4,7 @@ import { useSidebar } from "./SidebarContext.jsx";
 import Breadcrumbs from "./Breadcrumbs.jsx";
 import SearchBar from "./SearchBar.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
+import SoundToggle from "./SoundToggle.jsx";
 import AuthNav from "./AuthNav.jsx";
 
 export default function Header() {
@@ -34,6 +35,7 @@ export default function Header() {
         <div className="header-actions">
           <AuthNav />
           <ThemeToggle />
+          <SoundToggle />
         </div>
       </div>
     </header>

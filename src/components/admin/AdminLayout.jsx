@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useAdmin } from "./AdminAuthContext.jsx";
 import { signOutAdmin } from "../../lib/adminAuth.js";
+import SoundToggle from "../SoundToggle.jsx";
 import "../../styles/admin.css";
 
 const NAV = [
@@ -103,6 +104,7 @@ export default function AdminLayout() {
         <header className="admin-topbar">
           <h1 className="admin-title">{TITLES[pathname] || "Administration"}</h1>
           <div className="admin-topbar-right">
+            <SoundToggle />
             <span className="admin-user" title={user?.email || ""}>
               {user?.email || "administrator"}
             </span>
