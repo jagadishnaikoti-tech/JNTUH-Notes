@@ -7,9 +7,12 @@ rules_version = '2';
 //   * Visitors are anonymous and may only CREATE validated analytics events.
 //     They can never read other visitors' events, update or delete anything.
 //   * Only an authenticated administrator may read analytics or manage
-//     channels/settings. "Administrator" means a Firebase Auth user carrying the
-//     custom claim `admin == true`. Creating an account never grants this - the
-//     claim is set out-of-band with the Admin SDK (see scripts/set-admin.mjs).
+//     channels, alerts and settings. "Administrator" means a Firebase Auth user
+//     carrying the custom claim `admin == true`. Creating an account never
+//     grants this - the claim is set out-of-band with the Admin SDK (see
+//     scripts/set-admin.mjs).
+//   * Alert Radar visitors may read PUBLISHED alerts only; every alert write
+//     (create/update/publish/unpublish/delete) is admin-only.
 //   * Daily aggregates are written only by a trusted backend; the client can
 //     never write them.
 //
@@ -86,6 +89,52 @@ service cloud.firestore {
     match /channels/{channelId} {
       allow read: if isAdmin() || resource.data.active == true;
       allow create, update: if isAdmin() && validChannel(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // ---- alerts/{alertId} --------------------------------------------------
+    // JNTUH Alert Radar. Public visitors may read PUBLISHED alerts only, and
+    // their query MUST filter `status == "published"` (the rules require it).
+    // Administrators manage everything and are the only writers, so the
+    // verification metadata (verifiedAt / verifiedBy) can never be set or
+    // altered by an unprivileged user.
+
+    function validAlert(d) {
+      return d.keys().hasOnly([
+          'title', 'summary', 'category', 'sourceName', 'sourceUrl',
+          'publishedAt', 'deadlineAt', 'status', 'pinned', 'audience', 'tags',
+          'verifiedAt', 'verifiedBy', 'createdBy', 'updatedBy', 'createdAt',
+          'updatedAt', 'schemaVersion'
+        ])
+        && d.keys().hasAll([
+          'title', 'summary', 'category', 'sourceUrl', 'status', 'pinned',
+          'createdBy', 'updatedBy', 'createdAt', 'updatedAt', 'schemaVersion'
+        ])
+        && isString(d.title, 200) && d.title.size() >= 3
+        && isString(d.summary, 600) && d.summary.size() >= 1
+        && d.category in ['exams', 'timetable', 'calendar', 'results',
+              'admissions', 'scholarship', 'deadline', 'general']
+        && isString(d.sourceName, 80)
+        && isString(d.sourceUrl, 500) && d.sourceUrl.matches('^https?://.+')
+        && d.status in ['draft', 'published']
+        && d.pinned is bool
+        && d.schemaVersion is number
+        && d.createdAt is timestamp && d.updatedAt is timestamp
+        && isString(d.createdBy, 200) && isString(d.updatedBy, 200)
+        && (!d.keys().hasAny(['publishedAt']) || d.publishedAt == null
+              || d.publishedAt is timestamp)
+        && (!d.keys().hasAny(['deadlineAt']) || d.deadlineAt == null
+              || d.deadlineAt is timestamp)
+        && (!d.keys().hasAny(['verifiedAt']) || d.verifiedAt == null
+              || d.verifiedAt is timestamp)
+        && (!d.keys().hasAny(['verifiedBy']) || isString(d.verifiedBy, 200))
+        && (!d.keys().hasAny(['audience']) || d.audience is list)
+        && (!d.keys().hasAny(['tags']) || d.tags is list);
+    }
+
+    match /alerts/{alertId} {
+      allow read: if isAdmin() || resource.data.status == 'published';
+      allow create, update: if isAdmin() && validAlert(request.resource.data);
       allow delete: if isAdmin();
     }
 
