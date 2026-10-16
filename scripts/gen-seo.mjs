@@ -77,6 +77,7 @@ function routeDescriptors() {
     { kind: "questions", path: "/questions/guaranteed", categoryId: "guaranteed" },
     { kind: "questions", path: "/questions/short", categoryId: "short" },
     { kind: "code", path: "/code" },
+    { kind: "alerts", path: "/alerts" },
     { kind: "search", path: "/search" },
     { kind: "privacy", path: "/privacy-policy" },
     { kind: "terms", path: "/terms-and-conditions" },

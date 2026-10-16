@@ -227,6 +227,19 @@ export function seoFor(desc) {
       description =
         "The terms and conditions that apply to using the JNTUH Notes study-material website.";
       break;
+    case "alerts":
+      title = "JNTUH Alert Radar | Verified Notices, Deadlines & Updates";
+      description =
+        "A hand-verified, unofficial feed of JNTUH notices: exam updates, results, timetables, admissions, scholarships and deadlines, each linked to its official source.";
+      break;
+    case "alert":
+      // Detail pages are rendered client-side from live data, so they are kept
+      // out of the index until there is a prerendered copy to point at.
+      title = "JNTUH Alert | JNTUH Alert Radar";
+      description =
+        "A hand-verified JNTUH notice from the Alert Radar. Always confirm the details on the official JNTUH website before acting.";
+      robots = NOINDEX_ROBOTS;
+      break;
     default:
       title = "Page Not Found | JNTUH Notes";
       description =
@@ -323,6 +336,14 @@ export function buildCrumbs(desc) {
       ];
     case "account":
       return [home, { label: "Your account", path: "/account", current: true }];
+    case "alerts":
+      return [home, { label: "Alert Radar", path: "/alerts", current: true }];
+    case "alert":
+      return [
+        home,
+        { label: "Alert Radar", path: "/alerts" },
+        { label: "Alert", path: desc.path, current: true },
+      ];
     default:
       return [home, { label: "Page not found", path: desc.path, current: true }];
   }

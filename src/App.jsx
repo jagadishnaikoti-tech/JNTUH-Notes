@@ -29,6 +29,8 @@ import SignUp from "./pages/SignUp.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import Account from "./pages/Account.jsx";
 import NotFound from "./pages/NotFound.jsx";
+import AlertRadar from "./pages/AlertRadar.jsx";
+import AlertDetail from "./pages/AlertDetail.jsx";
 import { applyRouteHead } from "./lib/head.js";
 
 // The whole admin area (and the Firebase Auth/Firestore SDKs it needs) is code
@@ -123,6 +125,10 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+
+              {/* JNTUH Alert Radar (public). Reads published alerts only. */}
+              <Route path="/alerts" element={<AlertRadar />} />
+              <Route path="/alerts/:id" element={<AlertDetail />} />
 
               <Route path="*" element={<NotFound />} />
             </Route>

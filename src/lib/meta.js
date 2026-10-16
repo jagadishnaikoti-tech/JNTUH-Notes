@@ -43,8 +43,15 @@ export function describeRoute(pathname) {
       return { kind: "forgot", path };
     case "/account":
       return { kind: "account", path };
+    case "/alerts":
+      return { kind: "alerts", path };
     default:
       break;
+  }
+
+  const alertMatch = /^\/alerts\/([^/]+)$/.exec(path);
+  if (alertMatch) {
+    return { kind: "alert", path, alertId: alertMatch[1] };
   }
 
   const questionMatch = /^\/questions\/([^/]+)$/.exec(path);
