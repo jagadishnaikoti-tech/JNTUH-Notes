@@ -1022,7 +1022,7 @@ a.crumb:hover {
 }
 
 .quick-grid {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
 
 .doc-grid {
@@ -1031,7 +1031,7 @@ a.crumb:hover {
 }
 
 .question-grid {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
 }
 
 /* ---- Year card ---- */
@@ -3130,8 +3130,8 @@ a.crumb:hover {
   }
 }
 
-/* Keep the header (menu + brand + auth + theme/sound controls) on one line on
-   the smallest phones. Tap targets stay full size; only the spacing tightens. */
+/* Tighten the header spacing on the smallest phones so the controls fit on one
+   row wherever possible. Tap targets stay full size; only the spacing tightens. */
 @media (max-width: 400px) {
   .header-inner {
     gap: 8px;
@@ -3144,6 +3144,17 @@ a.crumb:hover {
 
   .auth-nav-cta {
     padding: 0 8px;
+  }
+}
+
+/* Below the common 360px width a single header row can no longer hold the
+   account controls plus both toggles, so let them wrap onto a second line.
+   This stops the header row from forcing the page wider than the viewport;
+   every control stays visible and keeps its full 44px tap target. */
+@media (max-width: 359.98px) {
+  .header-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 }
 
@@ -3196,4 +3207,12 @@ a.crumb:hover {
   .footer-list a:hover {
     transform: none !important;
   }
+}
+
+/* Alert Radar filters: the shared search field (.searchbar) removes the input's
+   own outline, so give the wrapper the same visible keyboard focus ring the
+   rest of the site uses. */
+.alert-search:focus-within {
+  outline: 3px solid var(--clay-ring);
+  outline-offset: 3px;
 }

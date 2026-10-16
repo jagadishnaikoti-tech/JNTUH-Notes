@@ -1,21 +1,34 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BellRing,
   ExternalLink,
+  Pin,
   RefreshCw,
+  Search,
   SearchX,
   ShieldAlert,
+  X,
 } from "lucide-react";
 import Footer from "../components/Footer.jsx";
 import { fetchPublishedAlerts } from "../lib/alerts.js";
-import { ALERT_DISCLAIMER, getAlertCategory } from "../data/alertSources.js";
+import { filterAlerts, hasActiveAlertFilters } from "../lib/alertFilters.js";
+import {
+  ALERT_CATEGORIES,
+  ALERT_DISCLAIMER,
+  getAlertCategory,
+} from "../data/alertSources.js";
 
 // The shared .doc-grid only defines the grid + gap, so the column count is set
-// per page (responsive auto-fill), matching the rest of the site.
+// per page (responsive auto-fill), matching the rest of the site. `min(100%,
+// 300px)` keeps the usual 300px minimum on normal screens but lets a single
+// column shrink to the container width on narrow phones, so a card can never
+// force a horizontal scrollbar.
 const CARD_GRID = {
-  gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))",
 };
+
+const chipClass = (active) => "chip" + (active ? " is-active" : "");
 
 function toDate(value) {
   if (!value) return null;
@@ -93,6 +106,11 @@ export default function AlertRadar() {
   const [status, setStatus] = useState("loading");
   const [alerts, setAlerts] = useState([]);
 
+  // Filters. Purely client-side and applied only to the already-published list.
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("all");
+  const [pinnedOnly, setPinnedOnly] = useState(false);
+
   const load = useCallback(async () => {
     setStatus("loading");
     try {
@@ -124,6 +142,18 @@ export default function AlertRadar() {
     };
   }, []);
 
+  const filters = { query, category, pinnedOnly };
+  const filtered = useMemo(() => filterAlerts(alerts, filters), [alerts, query, category, pinnedOnly]);
+  const filtersActive = hasActiveAlertFilters(filters);
+
+  const clearFilters = useCallback(() => {
+    setQuery("");
+    setCategory("all");
+    setPinnedOnly(false);
+  }, []);
+
+  const showFilters = status === "ready" && alerts.length > 0;
+
   return (
     <main className="page-main">
       <header style={{ marginBottom: "var(--space-lg)" }}>
@@ -149,6 +179,113 @@ export default function AlertRadar() {
       </p>
 
       <section className="section">
+        {showFilters ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-md)",
+              marginBottom: "var(--space-lg)",
+            }}
+          >
+            <div>
+              <label
+                htmlFor="alert-search"
+                style={{ fontWeight: 700, fontSize: "var(--text-sm)" }}
+              >
+                Search alerts
+              </label>
+              <div className="searchbar alert-search" style={{ marginTop: 6 }}>
+                <Search size={18} aria-hidden="true" />
+                <input
+                  id="alert-search"
+                  type="text"
+                  inputMode="search"
+                  enterKeyHint="search"
+                  className="searchbar-input"
+                  placeholder="Search by title, summary or tag…"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  autoComplete="off"
+                />
+                {query ? (
+                  <button
+                    type="button"
+                    className="searchbar-clear"
+                    onClick={() => setQuery("")}
+                    aria-label="Clear search"
+                  >
+                    <X size={16} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <fieldset style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+              <legend className="sr-only">Filter by category</legend>
+              <div className="chip-row">
+                <button
+                  type="button"
+                  className={chipClass(category === "all")}
+                  aria-pressed={category === "all"}
+                  onClick={() => setCategory("all")}
+                >
+                  All
+                </button>
+                {ALERT_CATEGORIES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={chipClass(category === item.id)}
+                    aria-pressed={category === item.id}
+                    onClick={() => setCategory(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: "var(--space-sm)",
+              }}
+            >
+              <button
+                type="button"
+                className={chipClass(pinnedOnly)}
+                aria-pressed={pinnedOnly}
+                onClick={() => setPinnedOnly((value) => !value)}
+              >
+                <Pin size={16} aria-hidden="true" />
+                Pinned only
+              </button>
+
+              {filtersActive ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={clearFilters}
+                >
+                  <X size={15} aria-hidden="true" />
+                  Clear filters
+                </button>
+              ) : null}
+
+              <span
+                className="muted"
+                role="status"
+                style={{ marginLeft: "auto", fontSize: "var(--text-sm)" }}
+              >
+                Showing {filtered.length} of {alerts.length}
+              </span>
+            </div>
+          </div>
+        ) : null}
+
         {status === "loading" ? (
           <div className="empty-state" role="status" aria-live="polite">
             <span className="empty-state-icon" aria-hidden="true">
@@ -182,9 +319,36 @@ export default function AlertRadar() {
               There are no published alerts at the moment. Please check back soon.
             </p>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="empty-state" role="status">
+            <span className="empty-state-icon" aria-hidden="true">
+              <SearchX size={26} />
+            </span>
+            <h2 style={{ margin: 0 }}>No alerts match</h2>
+            <p className="muted" style={{ marginTop: 8 }}>
+              {query.trim() ? (
+                <>
+                  Nothing matches “{query.trim()}” with the current filters. Try a
+                  different keyword, or clear the filters.
+                </>
+              ) : (
+                <>No alerts match the current filters. Try clearing them.</>
+              )}
+            </p>
+            <div className="row-center mt-md">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={clearFilters}
+              >
+                <X size={15} aria-hidden="true" />
+                Clear filters
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="doc-grid" style={CARD_GRID}>
-            {alerts.map((alert) => (
+            {filtered.map((alert) => (
               <AlertCard key={alert.id} alert={alert} />
             ))}
           </div>
