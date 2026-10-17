@@ -10,7 +10,6 @@ import {
   Search,
   Send,
   ShieldAlert,
-  Trash2,
   Undo2,
   X,
 } from "lucide-react";
@@ -25,7 +24,6 @@ import {
   ALERT_STATUS,
   cleanAlert,
   createAlert,
-  deleteAlert,
   fetchAllAlerts,
   publishAlert,
   unpublishAlert,
@@ -316,17 +314,6 @@ export default function AdminAlerts() {
       return;
     }
     runAction(alert.id, () => unpublishAlert(alert.id), "Alert moved back to drafts.");
-  }
-
-  function remove(alert) {
-    if (
-      !window.confirm(
-        `Delete “${alert.title}”? This permanently removes the alert and cannot be undone.`
-      )
-    ) {
-      return;
-    }
-    runAction(alert.id, () => deleteAlert(alert.id), "Alert deleted.");
   }
 
   return (
@@ -750,15 +737,6 @@ export default function AdminAlerts() {
                       aria-label={`Edit ${alert.title}`}
                     >
                       <Pencil size={15} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-ghost admin-danger"
-                      onClick={() => remove(alert)}
-                      disabled={busy}
-                      aria-label={`Delete ${alert.title}`}
-                    >
-                      <Trash2 size={15} aria-hidden="true" />
                     </button>
                   </span>
                 </li>

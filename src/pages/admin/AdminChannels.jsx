@@ -6,13 +6,11 @@ import {
   Plus,
   RefreshCw,
   Share2,
-  Trash2,
   X,
 } from "lucide-react";
 import { EmptyState, Panel, Spinner, formatNumber } from "../../components/admin/adminUi.jsx";
 import {
   createChannel,
-  deleteChannel,
   fetchAllChannels,
   updateChannel,
 } from "../../lib/channels.js";
@@ -103,21 +101,6 @@ export default function AdminChannels() {
     setBusyId(channel.id);
     try {
       await updateChannel(channel.id, { ...channel, active: !channel.active });
-      await load();
-    } catch (err) {
-      setError(err);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function remove(channel) {
-    if (!window.confirm(`Delete the “${channel.name}” channel? This cannot be undone.`)) {
-      return;
-    }
-    setBusyId(channel.id);
-    try {
-      await deleteChannel(channel.id);
       await load();
     } catch (err) {
       setError(err);
@@ -285,15 +268,6 @@ export default function AdminChannels() {
                       aria-label={`Edit ${channel.name}`}
                     >
                       <Pencil size={15} aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-ghost admin-danger"
-                      onClick={() => remove(channel)}
-                      disabled={busyId === channel.id}
-                      aria-label={`Delete ${channel.name}`}
-                    >
-                      <Trash2 size={15} aria-hidden="true" />
                     </button>
                   </span>
                 </li>
