@@ -34,32 +34,45 @@ There is no server code and no environment variables.
 ### SPA routing
 
 `vercel.json` declares `cleanUrls: true` and the catch-all rewrite that sends
-unknown paths to `index.html`:
+unknown paths to the SPA shell:
 
 ```json
 {
   "cleanUrls": true,
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index" }]
 }
 ```
 
-> **Important:** on the current production project that rewrite is **not being
-> applied.** Verified against the live deployment: `cleanUrls` does not redirect
-> `*.html`, and an unknown path such as `/does-not-exist` or `/admin/login`
-> returns Vercel's plain-text 404 instead of the app shell. Whatever the cause in
-> the project settings, the deployment currently behaves like a **plain static
-> file host**: only paths that exist as a real file are served.
+> **Why the destination has no `.html`:** when `cleanUrls: true` is set, Vercel
+> strips the `.html` extension at build time, so the built entry document is
+> addressable as `/index` (a request for `/index.html` is redirected to `/`).
+> A rewrite destination of `/index.html` therefore points at a path that no
+> longer exists, the rewrite resolves to nothing, and Vercel returns its
+> plain-text 404. The destination must be the extension-less `/index` — this is
+> the documented form for `cleanUrls` projects.
 
-Because of that, every route must exist as a real file after the build.
-`scripts/gen-seo.mjs` therefore writes prerendered documents for the public
-routes (`dist/<route>/index.html` + `dist/<route>.html`) **and** for the private
-admin routes (`dist/admin/**/index.html` + `dist/admin/*.html`, each with a
-`noindex, nofollow` head and no sitemap entry). This is what makes deep links
-such as `/year/2`, `/questions/guaranteed`, `/sitemaps` and `/admin/login` load
-correctly on a fresh request or refresh.
+Earlier revisions combined `cleanUrls: true` with
+`"destination": "/index.html"`, which is why every prerendered route still
+loaded while non-prerendered paths such as `/alerts/:id` or `/admin/ingest`
+returned Vercel's plain-text 404. `cleanUrls` itself was never the problem: a
+request for `/index.html` or `/year/2.html` returns a `308` redirect to the
+clean URL.
 
-If the Vercel project is later fixed so the rewrite takes effect, these files
-stay harmless: a real file always wins over the rewrite.
+Real files are still served before the rewrite, so every route continues to
+exist as a real file after the build. `scripts/gen-seo.mjs` writes prerendered
+documents for the public routes (`dist/<route>/index.html` + `dist/<route>.html`)
+**and** for the private admin routes (`dist/admin/**/index.html` +
+`dist/admin/*.html`, each with a `noindex, nofollow` head and no sitemap entry).
+This is what makes deep links such as `/year/2`, `/questions/guaranteed`,
+`/sitemaps` and `/admin/login` load correctly on a fresh request or refresh,
+independently of the rewrite. The rewrite only adds the SPA fallback for paths
+that have no real file (for example `/alerts/:id`, `/admin/ingest`, or an
+unknown URL), which then render the client app — including its client-side 404 —
+instead of Vercel's plain-text 404.
+
+> **Status:** the corrected `/index` destination is in the repository but is
+> **not yet verified in production.** Confirm it on a Vercel **preview**
+> deployment before promoting to production.
 
 ---
 
