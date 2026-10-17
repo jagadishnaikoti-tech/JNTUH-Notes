@@ -199,7 +199,9 @@ export default function AdminIngest() {
   }
 
   function refreshAll() {
-    setFlash(null);
+    // Deliberately does NOT clear the flash: callers report their own outcome
+    // immediately before/after refreshing, so wiping it here would hide the
+    // success message of the action that triggered the refresh.
     loadItems({ reset: true });
     loadMeta();
   }
@@ -379,7 +381,10 @@ export default function AdminIngest() {
         <button
           type="button"
           className="admin-refresh"
-          onClick={refreshAll}
+          onClick={() => {
+            setFlash(null);
+            refreshAll();
+          }}
           disabled={itemsLoading || metaLoading}
         >
           <RefreshCw
