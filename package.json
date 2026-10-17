@@ -12,7 +12,7 @@
     "collector": "node collector/index.mjs",
     "test:collector": "node --test \"collector/tests/*.test.mjs\"",
     "test:unit": "node --test \"tests/*.test.mjs\"",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-jntuh-notes \"node --test --test-concurrency=1 collector/tests/rules/firestore.rules.test.mjs collector/tests/rules/ingest.promotion.rules.test.mjs\"",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-jntuh-notes \"node --test --test-concurrency=1 collector/tests/rules/firestore.rules.test.mjs collector/tests/rules/ingest.promotion.rules.test.mjs collector/tests/rules/ingest.e2e.rules.test.mjs\"",
     "admin:create": "node scripts/create-admin.mjs",
     "admin:grant": "node scripts/set-admin.mjs",
     "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes"
