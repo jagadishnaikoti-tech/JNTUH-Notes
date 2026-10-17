@@ -76,6 +76,57 @@ function importSpecifiers(source) {
   return specs;
 }
 
+/**
+ * The bindings a module introduces: import specifiers (named/default/namespace),
+ * its own top-level const/let/var/function/class declarations, and names it
+ * re-exports. Used to prove a module never references a shared constant it
+ * forgot to import - the exact shape of the `STAGING_COLLECTIONS is not defined`
+ * write-mode failure.
+ */
+function boundNames(source) {
+  const names = new Set();
+  for (const match of source.matchAll(/\bimport\s*\{([\s\S]*?)\}\s*from/g)) {
+    for (const part of match[1].split(",")) {
+      const alias = part.split(/\bas\b/).pop().trim();
+      if (/^[A-Za-z_$][\w$]*$/.test(alias)) names.add(alias);
+    }
+  }
+  for (const match of source.matchAll(/\bimport\s+([A-Za-z_$][\w$]*)\s*(?:,|from\b)/g)) {
+    names.add(match[1]);
+  }
+  for (const match of source.matchAll(/\bimport\s*\*\s*as\s+([A-Za-z_$][\w$]*)/g)) {
+    names.add(match[1]);
+  }
+  for (const match of source.matchAll(/\b(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/g)) {
+    names.add(match[1]);
+  }
+  // Destructuring declarations bind their identifiers too: `const { SOURCE } = mod`.
+  for (const match of source.matchAll(/\b(?:const|let|var)\s*\{([^}]*)\}/g)) {
+    for (const token of match[1].matchAll(/[A-Za-z_$][\w$]*/g)) names.add(token[0]);
+  }
+  for (const match of source.matchAll(/\b(?:const|let|var)\s*\[([^\]]*)\]/g)) {
+    for (const token of match[1].matchAll(/[A-Za-z_$][\w$]*/g)) names.add(token[0]);
+  }
+  return names;
+}
+
+/** Uppercase constants exported by the collector's implementation modules. */
+function sharedConstantNames(sources) {
+  const names = new Set();
+  const add = (value) => {
+    if (/^[A-Z][A-Z0-9_]*$/.test(value)) names.add(value);
+  };
+  for (const { source } of sources) {
+    for (const match of source.matchAll(/\bexport\s+(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)/g)) {
+      add(match[1]);
+    }
+    for (const match of source.matchAll(/\bexport\s*\{([\s\S]*?)\}\s*(?:from\b|;)/g)) {
+      for (const part of match[1].split(",")) add(part.split(/\bas\b/).pop().trim());
+    }
+  }
+  return names;
+}
+
 /** Firestore / Admin SDK APIs that would mean a write path has appeared. */
 const FIRESTORE_WRITE_TOKENS = [
   "writeBatch", "runTransaction", "bulkWriter",
@@ -176,6 +227,27 @@ test("only the admin store references a Firestore write API", () => {
     }
   }
   assert.deepEqual(offenders, [], "the collector must not reference any Firestore write API outside the admin store");
+});
+
+test("every collector module imports each shared constant it references", () => {
+  const sources = implementationSources();
+  const shared = sharedConstantNames(sources);
+  const offenders = [];
+  for (const { rel, source } of sources) {
+    const bound = boundNames(source);
+    for (const name of shared) {
+      if (bound.has(name)) continue;
+      // A bare identifier use with no import/declaration is a ReferenceError at
+      // run time; catch it here instead of mid --write. Member access
+      // (`registry.SOURCE`) is not a free identifier, so ignore it.
+      if (new RegExp(`(?<!\\.)\\b${name}\\b`).test(source)) offenders.push(`${rel} -> ${name}`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    "a module referenced a shared constant it neither imported nor declared",
+  );
 });
 
 test("no collector implementation module writes to the filesystem", () => {

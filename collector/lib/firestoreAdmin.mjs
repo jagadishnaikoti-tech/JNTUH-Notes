@@ -18,6 +18,7 @@ import {
   INTENDED_PROJECT_ID,
   MAX_BATCH_SIZE,
   MAX_READ_SIZE,
+  STAGING_COLLECTIONS,
   STAGING_COLLECTION_NAMES,
   chunkOperations,
   isStagingCollection,
@@ -187,7 +188,9 @@ export function createIngestStore({
 
   async function readStaging(collection, ids) {
     assertCollection(collection);
-    const unique = [...new Set((ids ?? []).filter(Boolean).map(String))];
+    // `ids` may be an array or a Set: itemIdsForSources() returns a Set and
+    // index.mjs hands that straight to readItems.
+    const unique = [...new Set(Array.from(ids ?? []).filter(Boolean).map(String))];
     const found = new Map();
     if (unique.length === 0) return found;
     const chunks = chunkOperations(unique, MAX_READ_SIZE);
