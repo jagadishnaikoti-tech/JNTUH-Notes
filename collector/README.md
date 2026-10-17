@@ -4,9 +4,13 @@ A small, dependency-free Node script that reads two public JNTUH pages and
 prints the notices it finds. It is the ingestion half of the **Alert Radar**
 feature on the site.
 
-> **Phase 1 status: read-only collector.** This code can *read* and *report*.
-> It cannot and will not write to Firestore, and it can never publish an alert.
-> See [Why automatic publication is disabled](#why-automatic-publication-is-disabled).
+> **Status: dry run by default, staging writes opt-in.** With no flags the
+> collector only *reads* and *reports* — it never initialises the Firebase Admin
+> SDK. Passing `--write` (with `--project`) lets it *stage* notices in
+> admin-only Firestore collections for human review. It can never verify,
+> publish or modify an alert. See [Dry-run mode](#dry-run-mode),
+> [Write mode (staging)](#write-mode-staging) and
+> [Why automatic publication is disabled](#why-automatic-publication-is-disabled).
 
 ---
 
@@ -16,7 +20,7 @@ Node 18+ (developed and verified on Node 24). There are **no npm dependencies**
 to install for the collector — it uses only Node built-ins.
 
 ```bash
-# Dry run against the live public pages (the default and only mode)
+# Dry run against the live public pages (the default; read-only)
 npm run collector
 
 # Same thing, explicitly
@@ -47,9 +51,9 @@ yourself). **The collector itself runs on Node 18+.**
 
 ---
 
-## Dry-run mode
+## Dry-run mode (the default)
 
-Dry-run is not a flag — it is the only mode that exists. Every execution:
+With no flags the collector only reads and reports. Every dry run:
 
 1. issues a plain HTTP `GET` to each source's public listing page;
 2. parses the HTML into "notices";
@@ -59,15 +63,17 @@ Dry-run is not a flag — it is the only mode that exists. Every execution:
 
 and then stops. In particular a dry run:
 
-- **never** imports or initialises the Firebase Admin SDK;
+- **never** imports or initialises the Firebase Admin SDK (the Admin SDK is
+  loaded only through a dynamic `import()` inside the `--write` branch);
 - **never** writes to Firestore, to disk, or to any other store;
 - **never** creates, modifies, or deletes an alert;
 - **never** publishes anything.
 
 This is enforced mechanically, not just by convention — `collector/tests/safety.test.mjs`
-scans every `.mjs` file under `collector/` and fails if any of them references
-Firebase, and asserts the CLI entry point contains no Firestore/Admin calls and
-no file-writing API.
+and `collector/tests/guard.test.mjs` assert that exactly one module
+(`collector/lib/firestoreAdmin.mjs`) imports the Firebase Admin SDK, that no
+other implementation module references a Firestore write API, and that the CLI
+entry point contains no Firestore/Admin initialisation and no file-writing API.
 
 ### Exit codes
 
@@ -93,6 +99,66 @@ zero notices is treated as a markup change and reported as an error.
 | `--baseline <file>` | — | Read previously seen keys from a JSON file for cross-run dedup. **Read-only**: the file is never created or updated. |
 | `--offline <dir>` | — | Read `<dir>/<sourceId>.html` instead of the network. |
 | `--json` | off | Emit JSON instead of the text report. |
+
+---
+
+## Write mode (staging)
+
+With `--write` the collector stages what it found in Firestore instead of just
+printing it. It writes **only** to admin-only staging collections:
+
+| Collection | One document per | Written by |
+| ---------- | ---------------- | ---------- |
+| `ingestItems` | staged notice (no `status`, no alert fields) | collector |
+| `ingestRuns` | collector run ("what happened?") | collector |
+| `ingestSourceHealth` | official source (last attempt / last success) | collector |
+
+Write mode never touches the public `alerts` collection, and every staged notice
+is a plain record awaiting review — the collector can produce neither a verified
+nor a published alert.
+
+### Write-mode options
+
+| Option | Default | Effect |
+| ------ | ------- | ------ |
+| `--write` | off | Enable staging writes. Requires `--project`. |
+| `--project <id>` | — | Must equal `jntuh-notes-6ef74`; any other id is refused (fail closed). |
+| `--emulator` | off | Write to the local Firestore emulator. Requires `FIRESTORE_EMULATOR_HOST`; cannot be combined with `--allow-production`. |
+| `--allow-production` | off | Required for a real (non-emulator) write. Refused if `FIRESTORE_EMULATOR_HOST` is set. |
+| `--max-items <n>` | `0` (all) | Cap how many new staged notices are created in one run. |
+
+### Guardrails
+
+- A bare invocation is still a dry run — `--write` defaults to `false`.
+- `--allow-production` and `--emulator` are usage errors without `--write`.
+- Credentials come from **Application Default Credentials**
+  (`GOOGLE_APPLICATION_CREDENTIALS`, or an attached/Workload Identity service
+  account). No key is stored in the repository, and the collector keeps no
+  secrets in code.
+- The store's allowlist accepts only the three staging collection names above.
+
+```bash
+# Stage into the local emulator (safe, no production data)
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+  node collector/index.mjs --write --emulator --project jntuh-notes-6ef74
+
+# Stage into production (deliberate double opt-in)
+node collector/index.mjs --write --allow-production --project jntuh-notes-6ef74
+```
+
+### The admin review workflow is separate
+
+Staging and review are two distinct systems:
+
+- the **collector** writes raw staged notices into `ingestItems`;
+- the **admin review workflow** is the web app page at `/admin/ingest`
+  (`src/lib/ingest.js` + `src/pages/admin/AdminIngest.jsx`). There an
+  administrator filters the queue by review state and source, opens the original
+  source URL, ignores a notice, returns an ignored notice to review, or promotes
+  a reviewed notice into a private alert **draft** in one transaction.
+
+Neither half can publish: promotion creates a draft, and verification/publishing
+stay a manual administrator action on the Alert Radar page.
 
 ---
 
@@ -289,22 +355,31 @@ So the collector produces drafts, an administrator reviews them in
 
 `firestore.rules` validates alert documents with `keys().hasOnly([...])`, so
 **no extra field may ever be added to an alert document.** Everything the
-collector computes beyond the schema — canonical URL, document URL, attachments,
-content hash, review reasons, collection timestamp — is returned separately in
-the `collector` object from `toAlertDraft()` and must be persisted in its own
-collection if Phase 2 ever stores it. Mixing it into the alert document would
-make the document fail validation.
+collector records beyond the alert schema — canonical URL, document URL,
+attachments, content hash, review metadata — lives in its own staging
+collections instead:
+
+- `ingestItems` — one document per staged notice, plus the review fields an
+  administrator may change (`reviewState`, `promotedAlertId`, `promotedAt`,
+  `promotedBy`);
+- `ingestRuns` — one document per collector run (counts, status, warnings);
+- `ingestSourceHealth` — one document per official source.
+
+All three are admin-only in `firestore.rules`: only administrators may read
+them, the collector writes them through the Admin SDK, and a browser may change
+only the four review fields on `ingestItems`. The public `alerts` collection is
+never written by the collector.
 
 ---
 
-## Remaining work (Phase 2+)
+## Remaining work
 
 - Decide the scheduler (GitHub Actions cron vs. Cloud Functions) and whether the
-  project moves to the Blaze plan.
-- A write path: `firebase-admin` (already a devDependency) with Application
-  Default Credentials, writing **drafts only** into a new admin-only `ingest*`
-  collection, which requires a `firestore.rules` change.
+  project moves to the Blaze plan. Nothing is scheduled today: a run is a manual
+  command and dry run is the default.
 - Persisting the dedup baseline so cross-run duplicate detection is automatic
   rather than supplied via `--baseline`.
-- Extending the `notifications` adapter to crawl the older archived rows.
-- An admin UI panel to show pending collector drafts and their health.
+- Extending the `notifications` adapter to crawl the older archived rows
+  (~500 of them are only reachable through the site's own AJAX paging).
+- Deciding a retention/pruning policy for staged notices once they are promoted
+  or ignored; there is no automatic cleanup yet.

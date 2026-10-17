@@ -10,6 +10,7 @@ import {
   ShieldAlert,
   Sparkles,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react";
 import {
@@ -32,6 +33,7 @@ import {
   ignoreIngestItem,
   ingestSourceOptions,
   promoteIngestItem,
+  returnIngestItemToReview,
 } from "../../lib/ingest.js";
 import { cleanAlert } from "../../lib/alerts.js";
 import {
@@ -343,6 +345,21 @@ export default function AdminIngest() {
       return;
     }
     runAction(item.id, () => ignoreIngestItem({ itemId: item.id }), "Staged notice ignored.");
+  }
+
+  function returnToReview(item) {
+    if (
+      !window.confirm(
+        `Return “${item.title}” to the review queue? It will appear as a new staged notice again.`
+      )
+    ) {
+      return;
+    }
+    runAction(
+      item.id,
+      () => returnIngestItemToReview({ itemId: item.id }),
+      "Staged notice returned to review."
+    );
   }
 
   const brokenSources = useMemo(
@@ -788,6 +805,17 @@ export default function AdminIngest() {
                         aria-label={`Ignore ${item.title}`}
                       >
                         <Trash2 size={15} aria-hidden="true" /> Ignore
+                      </button>
+                    ) : null}
+                    {item.reviewState === REVIEW_STATE.IGNORED ? (
+                      <button
+                        type="button"
+                        className="admin-ghost"
+                        onClick={() => returnToReview(item)}
+                        disabled={busy}
+                        aria-label={`Return ${item.title} to review`}
+                      >
+                        <Undo2 size={15} aria-hidden="true" /> Return to review
                       </button>
                     ) : null}
                   </span>

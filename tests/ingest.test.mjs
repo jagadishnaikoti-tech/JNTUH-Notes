@@ -30,9 +30,11 @@ import {
   hasContentChange,
   ignoreIngestItem,
   ingestSourceOptions,
+  normaliseIngestRun,
   normaliseSourceHealth,
   promoteIngestItem,
   redactErrorText,
+  returnIngestItemToReview,
 } from "../src/lib/ingest.js";
 
 // --- a small mock Firestore -------------------------------------------------
@@ -51,6 +53,9 @@ function makeFake(options = {}) {
   };
   const log = { sets: [], updates: [], transactions: 0, queries: [] };
   const db = { permissionDenied: Boolean(options.permissionDenied) };
+  // Simulates a Firestore write/commit failure in both `updateDoc` and
+  // `runTransaction` (the transaction rejects before applying any staged write).
+  const failUpdate = Boolean(options.failUpdate);
   let seq = 0;
 
   const split = (path) => {
@@ -97,8 +102,21 @@ function makeFake(options = {}) {
       return { docs, size: docs.length };
     },
 
+    async getDoc(ref) {
+      if (db.permissionDenied) throw denied();
+      const [col, id] = split(ref.path);
+      const store = storeFor(col);
+      const data = id in store ? store[id] : undefined;
+      return { id, exists: () => data !== undefined, data: () => data };
+    },
+
     async updateDoc(ref, data) {
       if (db.permissionDenied) throw denied();
+      if (failUpdate) {
+        const err = new Error("write failed");
+        err.code = "unavailable";
+        throw err;
+      }
       const [col, id] = split(ref.path);
       const store = storeFor(col);
       if (!(id in store)) {
@@ -126,6 +144,14 @@ function makeFake(options = {}) {
         update: (ref, data) => staged.updates.push({ path: ref.path, data }),
       };
       const result = await update(tx);
+      // A simulated write failure rejects the transaction before any staged
+      // write is applied, so the store stays exactly as it was - matching a
+      // real failed commit.
+      if (failUpdate) {
+        const err = new Error("write failed");
+        err.code = "unavailable";
+        throw err;
+      }
       for (const w of staged.sets) {
         const [col, id] = split(w.path);
         storeFor(col)[id] = w.data;
@@ -290,6 +316,207 @@ describe("ignoring a staged notice", () => {
   });
 });
 
+// --- returning an ignored notice to review ----------------------------------
+
+describe("returning an ignored notice to review", () => {
+  const ignoredItem = () => ({
+    items: { [ITEM_ID]: { ...BASE_ITEM, reviewState: "ignored" } },
+  });
+
+  it("reads and updates in a single transaction, writing only reviewState", async () => {
+    const { context, stores, log } = makeFake(ignoredItem());
+    const result = await returnIngestItemToReview({ itemId: ITEM_ID }, { context });
+
+    assert.equal(result.reviewState, "new");
+    assert.equal(stores.ingestItems[ITEM_ID].reviewState, "new");
+
+    // Exactly one transaction, exactly one write, and the write happened inside
+    // it (a transactional write, not a second standalone update).
+    assert.equal(log.transactions, 1);
+    assert.equal(log.updates.length, 1);
+    assert.equal(log.updates[0].txn, true);
+    assert.deepEqual(Object.keys(log.updates[0].data), ["reviewState"]);
+  });
+
+  it("preserves every other notice field while changing only reviewState", async () => {
+    const seeded = {
+      ...BASE_ITEM,
+      reviewState: "ignored",
+      seenCount: 7,
+      contentHash: "hash-1",
+      previousHash: "hash-0",
+      changedAt: new Date("2026-10-16T00:00:00Z"),
+      attachments: ["https://jntuh.ac.in/uploads/notifications/b.pdf"],
+    };
+    const { context, stores } = makeFake({ items: { [ITEM_ID]: { ...seeded } } });
+
+    await returnIngestItemToReview({ itemId: ITEM_ID }, { context });
+
+    const after = stores.ingestItems[ITEM_ID];
+    assert.equal(after.reviewState, "new");
+    // Everything the collector recorded is untouched.
+    assert.equal(after.title, BASE_ITEM.title);
+    assert.equal(after.sourceId, BASE_ITEM.sourceId);
+    assert.equal(after.seenCount, 7);
+    assert.equal(after.contentHash, "hash-1");
+    assert.equal(after.previousHash, "hash-0");
+    assert.deepEqual(after.attachments, [
+      "https://jntuh.ac.in/uploads/notifications/b.pdf",
+    ]);
+    assert.equal(after.changedAt, seeded.changedAt);
+  });
+
+  it("refuses to return an inconsistent item that already carries an alert id", async () => {
+    // `ignored` plus promotion metadata cannot arise from the supported flow
+    // (the only writer of the metadata sets `promoted` atomically), so it is an
+    // inconsistent document. It must not re-enter the queue and be promoted a
+    // second time.
+    const { context, stores, log } = makeFake({
+      items: {
+        [ITEM_ID]: {
+          ...BASE_ITEM,
+          reviewState: "ignored",
+          promotedAlertId: "alert-9",
+          promotedAt: new Date("2026-10-10T00:00:00Z"),
+          promotedBy: "admin@jntuh.example",
+        },
+      },
+    });
+
+    await assert.rejects(
+      () => returnIngestItemToReview({ itemId: ITEM_ID }, { context }),
+      /already has an alert/i
+    );
+
+    const item = stores.ingestItems[ITEM_ID];
+    assert.equal(item.reviewState, "ignored");
+    assert.equal(item.promotedAlertId, "alert-9");
+    assert.equal(item.promotedBy, "admin@jntuh.example");
+    assert.equal(log.transactions, 1);
+    assert.equal(log.updates.length, 0);
+  });
+
+  it("reports a missing notice clearly and commits nothing", async () => {
+    const { context, log } = makeFake({});
+    await assert.rejects(
+      () => returnIngestItemToReview({ itemId: "missing" }, { context }),
+      (err) => err.code === "not-found" && /no longer exists/i.test(err.message)
+    );
+    assert.equal(log.updates.length, 0);
+  });
+
+  it("refuses to touch a promoted notice and commits nothing", async () => {
+    const { context, stores, log } = makeFake({
+      items: {
+        [ITEM_ID]: { ...BASE_ITEM, reviewState: "promoted", promotedAlertId: "alert-9" },
+      },
+    });
+    await assert.rejects(
+      () => returnIngestItemToReview({ itemId: ITEM_ID }, { context }),
+      /only an ignored notice/i
+    );
+    assert.equal(stores.ingestItems[ITEM_ID].reviewState, "promoted");
+    assert.equal(log.transactions, 1);
+    assert.equal(log.updates.length, 0);
+  });
+
+  it("refuses a notice that is already new and commits nothing", async () => {
+    const { context, stores, log } = makeFake(freshItem());
+    await assert.rejects(
+      () => returnIngestItemToReview({ itemId: ITEM_ID }, { context }),
+      /only an ignored notice/i
+    );
+    assert.equal(stores.ingestItems[ITEM_ID].reviewState, "new");
+    assert.equal(log.updates.length, 0);
+  });
+
+  it("surfaces a commit failure clearly and leaves the item ignored", async () => {
+    const { context, stores, log } = makeFake({ ...ignoredItem(), failUpdate: true });
+    await assert.rejects(
+      () => returnIngestItemToReview({ itemId: ITEM_ID }, { context }),
+      /could not return this notice to review/i
+    );
+    assert.equal(stores.ingestItems[ITEM_ID].reviewState, "ignored");
+    assert.equal(log.updates.length, 0);
+  });
+
+  it("surfaces permission-denied clearly", async () => {
+    const { context, log } = makeFake({ ...ignoredItem(), permissionDenied: true });
+    await assert.rejects(
+      () => returnIngestItemToReview({ itemId: ITEM_ID }, { context }),
+      (err) => err.code === "permission-denied"
+    );
+    assert.equal(log.updates.length, 0);
+  });
+});
+
+// --- ingestion run counts ---------------------------------------------------
+
+describe("ingestion run counts", () => {
+  it("maps the collector's sourcesOk/sourcesFailed onto succeeded/failed", () => {
+    const run = normaliseIngestRun("run-1", {
+      status: "partial",
+      counts: {
+        sources: 2,
+        sourcesOk: 1,
+        sourcesFailed: 1,
+        sourcesDegraded: 0,
+        sourcesRefused: 0,
+        notices: 5,
+      },
+    });
+
+    assert.equal(run.counts.sources, 2);
+    assert.equal(run.counts.succeeded, 1);
+    assert.equal(run.counts.failed, 1);
+    assert.equal(run.counts.degraded, 0);
+    assert.equal(run.counts.refused, 0);
+    assert.equal(run.counts.notices, 5);
+  });
+
+  it("keeps legacy succeeded/failed documents, preferring them over sourcesOk/sourcesFailed", () => {
+    const run = normaliseIngestRun("run-2", {
+      counts: {
+        sources: 1,
+        succeeded: 1,
+        failed: 0,
+        sourcesOk: 9,
+        sourcesFailed: 9,
+      },
+    });
+
+    assert.equal(run.counts.succeeded, 1);
+    assert.equal(run.counts.failed, 0);
+  });
+
+  it("uses safe zero defaults when counts are missing or invalid", () => {
+    const run = normaliseIngestRun("run-3", {
+      counts: { sources: "x", sourcesFailed: -2, notices: null },
+    });
+
+    assert.equal(run.counts.sources, 0);
+    assert.equal(run.counts.succeeded, 0);
+    assert.equal(run.counts.failed, 0);
+    assert.equal(run.counts.notices, 0);
+  });
+
+  it("reports zero for a run document with no counts at all", () => {
+    const run = normaliseIngestRun("run-4", {});
+    assert.deepEqual(run.counts, {
+      sources: 0,
+      succeeded: 0,
+      failed: 0,
+      degraded: 0,
+      refused: 0,
+      notices: 0,
+      itemsCreated: 0,
+      itemsRefreshed: 0,
+      itemsChanged: 0,
+      itemsDeferred: 0,
+    });
+  });
+});
+
 // --- promotion --------------------------------------------------------------
 
 describe("promotion into an alert draft", () => {
@@ -365,6 +592,36 @@ describe("promotion into an alert draft", () => {
     assert.equal(second.created, false);
     assert.equal(second.alertId, first.alertId);
     assert.equal(Object.keys(stores.alerts).length, 1);
+  });
+
+  it("creates no second alert for an inconsistent item carrying an alert id in a non-promoted state", async () => {
+    // A legacy/out-of-band document can carry `promotedAlertId` while its state
+    // says `ignored`. Promotion must stay idempotent on the alert id, or it
+    // would fork a second draft from the same notice.
+    const { context, stores, log } = makeFake({
+      items: {
+        [ITEM_ID]: {
+          ...BASE_ITEM,
+          reviewState: "ignored",
+          promotedAlertId: "alert-existing",
+          promotedAt: new Date("2026-10-10T00:00:00Z"),
+          promotedBy: "admin@x",
+        },
+      },
+    });
+
+    const result = await promoteIngestItem(
+      { itemId: ITEM_ID, input: VALID_INPUT, actor: "admin@x" },
+      { context }
+    );
+
+    assert.equal(result.created, false);
+    assert.equal(result.alertId, "alert-existing");
+    assert.equal(Object.keys(stores.alerts).length, 0);
+    assert.equal(log.sets.length, 0);
+    assert.equal(log.updates.length, 0);
+    assert.equal(stores.ingestItems[ITEM_ID].promotedAlertId, "alert-existing");
+    assert.equal(stores.ingestItems[ITEM_ID].reviewState, "ignored");
   });
 
   it("rejects a missing summary and writes nothing", async () => {

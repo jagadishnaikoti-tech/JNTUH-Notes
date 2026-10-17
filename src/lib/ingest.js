@@ -155,6 +155,27 @@ export function redactErrorText(value) {
 
 // --- normalisers (never invent a value) -------------------------------------
 
+/**
+ * A count is only real when it is a finite, non-negative number. Anything else
+ * (missing, null, a string, NaN, negative) returns null so callers can fall back
+ * to another field name rather than reporting a fabricated 0.
+ */
+function countOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.floor(n);
+}
+
+/** First valid count among the candidates, else 0 (a safe default). */
+function firstCount(...values) {
+  for (const value of values) {
+    const n = countOrNull(value);
+    if (n !== null) return n;
+  }
+  return 0;
+}
+
 /** Normalise one staged item into a stable, render-safe shape. */
 export function normaliseIngestItem(id, data = {}) {
   const src = data || {};
@@ -215,14 +236,20 @@ export function normaliseIngestRun(id, data = {}) {
     finishedAt: src.finishedAt || null,
     durationMs: Number(src.durationMs) || 0,
     counts: {
-      sources: Number(counts.sources) || 0,
-      succeeded: Number(counts.succeeded) || 0,
-      failed: Number(counts.failed) || 0,
-      notices: Number(counts.notices) || 0,
-      itemsCreated: Number(counts.itemsCreated) || 0,
-      itemsRefreshed: Number(counts.itemsRefreshed) || 0,
-      itemsChanged: Number(counts.itemsChanged) || 0,
-      itemsDeferred: Number(counts.itemsDeferred) || 0,
+      sources: firstCount(counts.sources),
+      // The collector records source outcomes as sourcesOk / sourcesDegraded /
+      // sourcesFailed / sourcesRefused. Older run documents may instead carry
+      // the legacy succeeded / failed names, so those win when present, keeping
+      // both document shapes correct.
+      succeeded: firstCount(counts.succeeded, counts.sourcesOk),
+      failed: firstCount(counts.failed, counts.sourcesFailed),
+      degraded: firstCount(counts.sourcesDegraded),
+      refused: firstCount(counts.sourcesRefused),
+      notices: firstCount(counts.notices),
+      itemsCreated: firstCount(counts.itemsCreated),
+      itemsRefreshed: firstCount(counts.itemsRefreshed),
+      itemsChanged: firstCount(counts.itemsChanged),
+      itemsDeferred: firstCount(counts.itemsDeferred),
     },
     sources: Array.isArray(src.sources) ? src.sources : [],
     warnings: Array.isArray(src.warnings) ? src.warnings : [],
@@ -397,11 +424,94 @@ export async function ignoreIngestItem({ itemId, actor = "" } = {}, deps = {}) {
 }
 
 /**
+ * Admin: return an IGNORED staged notice to the review queue.
+ *
+ * This is the only transition back into `new`, and it is deliberately narrow:
+ *   * it is human-triggered only - the collector never resurrects an item;
+ *   * the item is read INSIDE a transaction and updated in the same commit, so
+ *     the `reviewState` we branch on is still current when the write lands - a
+ *     concurrent promote/ignore can never be overwritten by a stale read;
+ *   * a missing item is rejected;
+ *   * only an item whose current state is exactly `ignored` may move. A
+ *     `promoted` item can never return (its alert exists and the state machine
+ *     is one-way), and a notice that is already `new` is rejected rather than
+ *     silently accepted;
+ *   * an item that still carries a `promotedAlertId` is rejected too, even when
+ *     its stored state says `ignored`. That combination is inconsistent - the
+ *     only writer of the metadata set `reviewState: "promoted"` atomically - and
+ *     letting it back into the queue would invite a second promotion;
+ *   * only `reviewState` is written - notice fields and promotion metadata are
+ *     left exactly as they were.
+ */
+export async function returnIngestItemToReview({ itemId } = {}, deps = {}) {
+  if (!itemId) throw new Error("A staged notice id is required.");
+  const ctx = await resolveContext(deps);
+  const { doc, runTransaction } = ctx.sdk;
+
+  const itemRef = doc(ctx.db, INGEST_COLLECTIONS.ITEMS, itemId);
+
+  try {
+    await runTransaction(ctx.db, async (tx) => {
+      // Read and write in one transaction, as Firestore requires (reads before
+      // writes). If the callback throws, nothing is committed.
+      const snap = await tx.get(itemRef);
+      if (!snap.exists()) {
+        const missing = new Error(
+          "This staged notice no longer exists. Refresh the list and try again."
+        );
+        missing.code = "not-found";
+        throw missing;
+      }
+
+      const current = snap.data() || {};
+      if (current.reviewState !== REVIEW_STATE.IGNORED) {
+        // Tag our own deliberate rejection so the catch below can pass its
+        // message through while unexpected commit failures get the friendly
+        // fallback.
+        const invalid = new Error("Only an ignored notice can be returned to review.");
+        invalid.code = "invalid-review-state";
+        throw invalid;
+      }
+
+      // The metadata is the authoritative record that an alert exists. A
+      // document can only carry it in a `promoted` state, so seeing it here is
+      // an inconsistent (legacy/out-of-band) document. Refuse rather than
+      // resurrect a notice that already produced an alert.
+      if (current.promotedAlertId) {
+        const invalid = new Error(
+          "This notice already has an alert and cannot be returned to review."
+        );
+        invalid.code = "invalid-review-state";
+        throw invalid;
+      }
+
+      tx.update(itemRef, { reviewState: REVIEW_STATE.NEW });
+    });
+  } catch (err) {
+    if (isNotFoundError(err)) {
+      throw userError(err, "This staged notice no longer exists. Refresh the list.");
+    }
+    if (isPermissionError(err)) {
+      throw userError(
+        err,
+        "Permission denied. Confirm your account has the admin claim and the Firestore rules are deployed."
+      );
+    }
+    if (err?.code === "invalid-review-state") {
+      throw userError(err, err.message);
+    }
+    throw userError(err, "Could not return this notice to review. Please try again.");
+  }
+
+  return { itemId, reviewState: REVIEW_STATE.NEW };
+}
+
+/**
  * Admin: promote a staged notice into an alert DRAFT - atomically and once.
  *
  * The whole operation is a single Firestore transaction:
  *   1. read ingestItems/{itemId}                  (admin-only read)
- *   2. if already promoted, return that alert id  (idempotent - no second alert)
+ *   2. if it already has an alert id, return that  (idempotent - no second alert)
  *   3. otherwise validate `input`                 (cleanAlert, existing rules)
  *   4. create the alert draft                     (buildAlertDocument)
  *   5. set reviewState/promotedAlertId/At/By      (the four permitted fields)
@@ -446,15 +556,16 @@ export async function promoteIngestItem(
 
       const item = snap.data() || {};
 
-      // Already promoted -> return the existing id and create nothing.
-      if (
-        item.reviewState === REVIEW_STATE.PROMOTED &&
-        item.promotedAlertId
-      ) {
+      // Already promoted -> return the existing id and create nothing. Keyed on
+      // `promotedAlertId` (the alert that actually exists) rather than on
+      // `reviewState`, so a document whose state drifted - an inconsistent
+      // legacy/out-of-band `ignored` or `new` that still carries promotion
+      // metadata - can never create a second alert or overwrite the first.
+      if (item.promotedAlertId) {
         return {
           alertId: item.promotedAlertId,
           created: false,
-          reviewState: REVIEW_STATE.PROMOTED,
+          reviewState: item.reviewState || REVIEW_STATE.PROMOTED,
           promotedAt: item.promotedAt || null,
           promotedBy: cleanText(item.promotedBy, MAX_ACTOR),
         };
