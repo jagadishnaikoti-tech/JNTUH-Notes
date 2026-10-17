@@ -1397,6 +1397,17 @@
   }
 }
 
+/* --------------------------------------------------------- Ingestion (staging) */
+/* A source that is failing (broken/degraded) gets an unmistakable accent so it
+   stands out in the health panel without resorting to alarming colours. */
+.admin-alert-row.is-broken {
+  border-left: 4px solid var(--clay-error);
+}
+
+.admin-strong .admin-pill {
+  margin-left: 8px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .admin-range-btn:hover,
   .admin-submit:hover:not(:disabled),

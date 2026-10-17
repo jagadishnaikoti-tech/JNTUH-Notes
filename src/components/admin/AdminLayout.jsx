@@ -4,6 +4,7 @@ import {
   BarChart3,
   BellRing,
   ExternalLink,
+  Inbox,
   LayoutDashboard,
   LogOut,
   MousePointerClick,
@@ -20,6 +21,7 @@ const NAV = [
   { to: "/admin/pdf-activity", label: "PDF Activity", icon: MousePointerClick },
   { to: "/admin/channels", label: "Channels", icon: Share2 },
   { to: "/admin/alerts", label: "Alerts", icon: BellRing },
+  { to: "/admin/ingest", label: "Ingestion", icon: Inbox },
 ];
 
 const TITLES = {
@@ -28,6 +30,7 @@ const TITLES = {
   "/admin/pdf-activity": "PDF Activity",
   "/admin/channels": "Social Channels",
   "/admin/alerts": "Alert Radar",
+  "/admin/ingest": "Alert Ingestion",
 };
 
 export default function AdminLayout() {

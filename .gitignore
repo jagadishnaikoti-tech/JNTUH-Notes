@@ -12,3 +12,8 @@ tools/*.json.bak
 serviceAccount*.json
 *firebase-adminsdk*.json
 .firebase/
+
+# Firebase Emulator Suite debug logs (created by `npm run test:rules`).
+firestore-debug.log
+firebase-debug.log
+ui-debug.log

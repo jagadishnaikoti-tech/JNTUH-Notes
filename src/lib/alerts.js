@@ -27,6 +27,14 @@ import { getFirebaseApp, loadAuth, loadFirestore } from "./firebase.js";
 import { ALERT_CATEGORY_IDS } from "../data/alertSources.js";
 
 const COLLECTION = "alerts";
+
+/**
+ * The Firestore collection alerts live in. Exported so other modules (the
+ * atomic ingestion promotion in lib/ingest.js) share one constant instead of
+ * hard-coding the string.
+ */
+export const ALERT_COLLECTION = COLLECTION;
+
 const SCHEMA_VERSION = 1;
 
 const MAX_TITLE = 200;
@@ -244,6 +252,31 @@ export async function fetchAllAlerts() {
   return sortAlerts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
 }
 
+/**
+ * The exact field set written for a NEW alert document (everything except the
+ * document id). Pure and SDK-agnostic, so the SAME draft shape is produced by
+ * `createAlert()` below and by the atomic promotion transaction in
+ * `lib/ingest.js` - there is only ever one way a draft gets built.
+ *
+ * `serverTimestamp` is injected so the caller supplies the SDK sentinel (a
+ * plain marker object Firestore resolves server-side, which is also valid
+ * inside a transaction). Verification metadata is always cleared here: only
+ * `verifyAlert()` may set it, so nothing created through this builder can be
+ * born verified or published.
+ */
+export function buildAlertDocument(fields, actor, serverTimestamp) {
+  const who = cleanText(actor, MAX_ACTOR);
+  return {
+    ...fields,
+    verifiedAt: null,
+    verifiedBy: "",
+    createdBy: who,
+    updatedBy: who,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
 /** Admin: create an alert. Every alert starts as an unverified draft. */
 export async function createAlert(input, actor = "") {
   const app = await getFirebaseApp();
@@ -263,15 +296,10 @@ export async function createAlert(input, actor = "") {
   const who = cleanText(actor, MAX_ACTOR) || (await currentActor(app));
 
   try {
-    return await addDoc(collection(db, COLLECTION), {
-      ...fields,
-      verifiedAt: null,
-      verifiedBy: "",
-      createdBy: who,
-      updatedBy: who,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    return await addDoc(
+      collection(db, COLLECTION),
+      buildAlertDocument(fields, who, serverTimestamp)
+    );
   } catch (err) {
     console.warn("[alerts] create failed:", err?.code || err);
     throw userError(err, "Could not save the alert. Please try again.");

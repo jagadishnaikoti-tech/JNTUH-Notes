@@ -89,7 +89,7 @@ service cloud.firestore {
     match /channels/{channelId} {
       allow read: if isAdmin() || resource.data.active == true;
       allow create, update: if isAdmin() && validChannel(request.resource.data);
-      allow delete: if isAdmin();
+      allow delete: if false;
     }
 
     // ---- alerts/{alertId} --------------------------------------------------
@@ -143,7 +143,71 @@ service cloud.firestore {
     match /alerts/{alertId} {
       allow read: if isAdmin() || resource.data.status == 'published';
       allow create, update: if isAdmin() && validAlert(request.resource.data);
-      allow delete: if isAdmin();
+      allow delete: if false;
+    }
+
+    // ---- ingestItems/{itemId} ---------------------------------------------
+    // JNTUH Alert Radar STAGING (Phase 2). These documents are written ONLY by
+    // the trusted collector through the Admin SDK, which bypasses these rules.
+    // A client may never create an item, because the collector owns the item's
+    // identity and every notice-derived field (title, URLs, hashes, source ids
+    // and the collector timestamps). The single client mutation permitted is an
+    // administrator moving a staged item through the review state machine.
+
+    // The only fields an administrator may change on a staged item. Everything
+    // else in the document is immutable from the client side.
+    function reviewUpdateFields() {
+      return ['reviewState', 'promotedAlertId', 'promotedAt', 'promotedBy'];
+    }
+
+    // Promotion metadata is all-or-nothing. A `promoted` item must carry a
+    // well-formed alert id, timestamp and actor. Any other state may *keep* a
+    // previous promotion's metadata as history, but every present field must
+    // still be correctly typed (no dumping a map or a number in `promotedAt`).
+    function validPromotion(d) {
+      return d.reviewState == 'promoted'
+        ? (d.keys().hasAll(['promotedAlertId', 'promotedAt', 'promotedBy'])
+            && isString(d.promotedAlertId, 200) && d.promotedAlertId.size() >= 1
+            && d.promotedAt is timestamp
+            && isString(d.promotedBy, 200) && d.promotedBy.size() >= 1)
+        : ((!d.keys().hasAny(['promotedAlertId']) || d.promotedAlertId == null
+              || (isString(d.promotedAlertId, 200) && d.promotedAlertId.size() >= 1))
+            && (!d.keys().hasAny(['promotedAt']) || d.promotedAt == null
+              || d.promotedAt is timestamp)
+            && (!d.keys().hasAny(['promotedBy']) || d.promotedBy == null
+              || (isString(d.promotedBy, 200) && d.promotedBy.size() >= 1)));
+    }
+
+    function validReviewUpdate(d, existing) {
+      return d.diff(existing).affectedKeys().hasOnly(reviewUpdateFields())
+        && d.keys().hasAll(['reviewState'])
+        && d.reviewState in ['new', 'promoted', 'ignored']
+        && validPromotion(d);
+    }
+
+    match /ingestItems/{itemId} {
+      allow read: if isAdmin();
+      allow create: if false;   // the collector is the only creator
+      allow update: if isAdmin() && validReviewUpdate(request.resource.data, resource.data);
+      allow delete: if false;
+    }
+
+    // ---- ingestRuns/{runId} -----------------------------------------------
+    // One audit document per collector run (status, counters, source summary).
+    // Written only by the collector; administrators may read the audit trail.
+
+    match /ingestRuns/{runId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ---- ingestSourceHealth/{sourceId} ------------------------------------
+    // Rolling per-source health (consecutive failures, last notices, error).
+    // Written only by the collector; administrators may read it.
+
+    match /ingestSourceHealth/{sourceId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // ---- settings/{docId} --------------------------------------------------
