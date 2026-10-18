@@ -1,8 +1,8 @@
 # Admin UI browser test harness (local emulator only)
 
-Real-browser coverage for the admin ingestion dashboard. It has **no new
-dependencies**: it reuses the project's existing Vite dev server, Firebase
-emulators and the OpenCode browser tooling.
+Real-browser coverage for the admin ingestion dashboard and the public
+homepage. It has **no new dependencies**: it reuses the project's existing Vite
+dev server, Firebase emulators and the OpenCode browser tooling.
 
 The harness boots the **real** app (`src/App.jsx`) and points it at the local
 `demo-jntuh-notes` Firestore + Auth emulators. It never touches production: it
@@ -39,9 +39,23 @@ npx vite --mode e2e --port 5173 --strictPort
 # optional: stage two synthetic notices mid-run
 node e2e/seed.mjs notices
 
+# optional: synthetic PUBLISHED alerts (plus one draft) for the homepage
+# "Latest alerts" section
+node e2e/seed.mjs alerts
+
 # cleanup
 node e2e/seed.mjs clear
 ```
+
+`seed.mjs alerts` is what the homepage checks use: open
+`http://localhost:5173/e2e/harness.html?path=/` for the populated state and
+`node e2e/seed.mjs clear` for the empty state.
+
+Stopping the emulator does **not** produce the error state: the Firestore SDK
+falls back to its (empty) cache when it is offline, so the section shows the
+empty state. To see the error state, run the emulator with rules that deny
+`alerts` reads - any real read failure, such as permission-denied, drives it -
+and the section's "Try again" recovers once reads succeed again.
 
 `VITE_FIREBASE_MEASUREMENT_ID` is left empty on purpose so no analytics traffic
 is generated.

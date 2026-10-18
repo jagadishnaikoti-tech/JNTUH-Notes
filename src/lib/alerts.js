@@ -199,25 +199,68 @@ export function cleanAlert(data = {}) {
 
 // --- public reads -----------------------------------------------------------
 
-/** Public: published alerts only, safe to render for visitors. */
-export async function fetchPublishedAlerts() {
+/**
+ * Resolve the Firestore context for a public read. Production callers get the
+ * real instance; tests inject `{ context: { db, sdk } }` (the same seam
+ * lib/ingest.js uses). Returns null when Firebase is not configured, so an
+ * unconfigured deployment degrades to an empty feed rather than an error.
+ */
+async function publicReadContext(deps) {
+  if (deps && deps.context) return deps.context;
   const app = await getFirebaseApp();
-  if (!app) return [];
+  if (!app) return null;
+  const sdk = await loadFirestore();
+  return { app, sdk, db: sdk.getFirestore(app) };
+}
+
+/**
+ * The single public read behind every alert list. Returns `{ alerts, error }`
+ * so a caller can tell an empty feed apart from a failed read - a distinction
+ * the homepage section needs to show a real error state.
+ *
+ * The query filters `status == "published"`, which firestore.rules require for
+ * an anonymous read, so a draft can never be returned here even if the rules
+ * were ever loosened on the write side.
+ */
+export async function readPublishedAlerts(deps) {
   try {
-    const { getFirestore, collection, getDocs, query, where } =
-      await loadFirestore();
-    const db = getFirestore(app);
-    const snap = await getDocs(
-      query(
-        collection(db, COLLECTION),
-        where("status", "==", ALERT_STATUS.PUBLISHED)
+    const ctx = await publicReadContext(deps);
+    if (!ctx) return { alerts: [], error: false };
+    const { sdk, db } = ctx;
+    const snap = await sdk.getDocs(
+      sdk.query(
+        sdk.collection(db, COLLECTION),
+        sdk.where("status", "==", ALERT_STATUS.PUBLISHED)
       )
     );
-    return sortAlerts(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    return {
+      alerts: sortAlerts(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      error: false,
+    };
   } catch (err) {
     console.warn("[alerts] public read failed:", err?.code || err);
-    return [];
+    return { alerts: [], error: true };
   }
+}
+
+/** Public: published alerts only, safe to render for visitors. */
+export async function fetchPublishedAlerts(deps) {
+  const { alerts } = await readPublishedAlerts(deps);
+  return alerts;
+}
+
+/** How many alerts the homepage "Latest alerts" section shows. */
+export const HOME_ALERTS_LIMIT = 4;
+
+/**
+ * Public: the newest few published alerts for the homepage. `sortAlerts` puts
+ * pinned notices first and then the most recently published, so this is
+ * genuinely the "latest". The read's success flag travels with the list so the
+ * section can distinguish "no alerts yet" from "the read failed".
+ */
+export async function fetchLatestPublishedAlerts(deps) {
+  const { alerts, error } = await readPublishedAlerts(deps);
+  return { alerts: alerts.slice(0, HOME_ALERTS_LIMIT), error };
 }
 
 /** Public: a single published alert by id, or null when absent/unpublished. */

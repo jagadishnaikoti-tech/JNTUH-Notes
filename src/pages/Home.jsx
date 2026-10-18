@@ -20,6 +20,7 @@ import {
 } from "../data/site.js";
 import SearchBar from "../components/SearchBar.jsx";
 import Footer from "../components/Footer.jsx";
+import LatestAlerts from "../components/LatestAlerts.jsx";
 import QuestionSetsSection from "../components/QuestionSetsSection.jsx";
 
 const QUICK_LINKS = [
@@ -120,6 +121,8 @@ export default function Home() {
 
         <p className="hero-note">{SITE.navNote}</p>
       </section>
+
+      <LatestAlerts />
 
       <section className="section">
         <div className="section-head">

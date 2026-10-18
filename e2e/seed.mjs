@@ -9,11 +9,14 @@
 //   node e2e/seed.mjs admin    # create/ensure the admin user + `admin: true` claim
 //   node e2e/seed.mjs notices  # stage two synthetic notices through the real
 //                              # collector write path (planRun + executeRun)
+//   node e2e/seed.mjs alerts   # seed synthetic PUBLISHED alerts (plus one draft)
+//                              # for the homepage "Latest alerts" section
 //   node e2e/seed.mjs clear    # delete every document in the emulator
 // ---------------------------------------------------------------------------
 
 import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 
 import { createIngestStore } from "../collector/lib/firestoreAdmin.mjs";
 import { executeRun, itemIdsForSources, planRun } from "../collector/write.mjs";
@@ -161,12 +164,146 @@ async function clearAll() {
   console.log(JSON.stringify({ ok: res.ok, status: res.status }));
 }
 
+// --- homepage "Latest alerts" fixtures --------------------------------------
+//
+// Synthetic notices for the public homepage section (Alert Radar data), all
+// clearly labelled "(synthetic)". Five are PUBLISHED - one pinned and one
+// older than the homepage's limit - so a driven browser can check ordering,
+// the 4-card cap and that the sixth, a draft, never appears. Admin-SDK writes
+// bypass security rules, so the emulator is seeded with documents that are
+// valid under firestore.rules (the real rules are still applied to browser
+// reads).
+
+const ALERT_COLLECTION = "alerts";
+const ALERT_ACTOR = "e2e-admin@example.com";
+
+function publishedAlert({
+  title,
+  summary,
+  category,
+  publishedAt,
+  deadlineAt = null,
+  pinned = false,
+}) {
+  const at = (value) => Timestamp.fromDate(new Date(value));
+  return {
+    title: `${title} (synthetic)`,
+    summary,
+    category,
+    sourceName: "JNTUH Notifications",
+    sourceUrl: "https://jntuh.ac.in/notifications",
+    publishedAt: at(publishedAt),
+    deadlineAt: deadlineAt ? at(deadlineAt) : null,
+    status: "published",
+    pinned,
+    audience: [],
+    tags: [],
+    verifiedAt: at(publishedAt),
+    verifiedBy: ALERT_ACTOR,
+    createdBy: ALERT_ACTOR,
+    updatedBy: ALERT_ACTOR,
+    createdAt: at(publishedAt),
+    updatedAt: at(publishedAt),
+    schemaVersion: 1,
+  };
+}
+
+const SEED_ALERTS = [
+  {
+    id: "e2e-alert-deadline",
+    doc: publishedAlert({
+      title: "Revised tuition fee payment deadline for R22 students",
+      summary: "The last date to pay the semester fee without a late fee.",
+      category: "deadline",
+      publishedAt: "2026-10-05T00:00:00Z",
+      deadlineAt: "2026-10-09T00:00:00Z",
+    }),
+  },
+  {
+    id: "e2e-alert-exams",
+    doc: publishedAlert({
+      title: "B.Tech IV Year II Semester regular examination schedule",
+      summary: "Subject-wise dates for the end-semester examinations.",
+      category: "exams",
+      publishedAt: "2026-10-03T00:00:00Z",
+    }),
+  },
+  {
+    id: "e2e-alert-pinned",
+    doc: publishedAlert({
+      title: "Academic calendar for the next semester",
+      summary: "Term dates, holidays and internal assessment weeks.",
+      category: "calendar",
+      publishedAt: "2026-09-28T00:00:00Z",
+      pinned: true,
+    }),
+  },
+  {
+    id: "e2e-alert-results",
+    doc: publishedAlert({
+      title: "III Year I Semester results declared",
+      summary: "Results are available on the examinations portal.",
+      category: "results",
+      publishedAt: "2026-09-25T00:00:00Z",
+    }),
+  },
+  {
+    id: "e2e-alert-older",
+    doc: publishedAlert({
+      title: "Older notice outside the homepage limit",
+      summary: "This one is published but falls past the 4-card cap.",
+      category: "general",
+      publishedAt: "2026-09-12T00:00:00Z",
+    }),
+  },
+  {
+    id: "e2e-alert-draft",
+    doc: {
+      ...publishedAlert({
+        title: "Unpublished draft that must stay private",
+        summary: "Not verified or published - must never reach the public UI.",
+        category: "general",
+        publishedAt: "2026-10-10T00:00:00Z",
+      }),
+      status: "draft",
+      verifiedAt: null,
+      verifiedBy: "",
+    },
+  },
+];
+
+async function seedAlerts() {
+  const app = initializeApp({ projectId: PROJECT_ID }, "e2e-seed-alerts");
+  try {
+    const db = getFirestore(app);
+    const batch = db.batch();
+    for (const { id, doc } of SEED_ALERTS) {
+      batch.set(db.collection(ALERT_COLLECTION).doc(id), doc);
+    }
+    await batch.commit();
+    console.log(
+      JSON.stringify({
+        ok: true,
+        alerts: SEED_ALERTS.map(({ id, doc }) => ({
+          id,
+          status: doc.status,
+          pinned: doc.pinned,
+          publishedAt: doc.publishedAt?.toDate().toISOString(),
+        })),
+      })
+    );
+  } finally {
+    await deleteApp(app);
+  }
+}
+
 const command = process.argv[2];
 if (command === "admin") await ensureAdmin();
 else if (command === "nonadmin") await ensureNonAdmin();
 else if (command === "notices") await stageNotices();
+else if (command === "alerts") await seedAlerts();
 else if (command === "clear") await clearAll();
 else {
-  console.error("usage: node e2e/seed.mjs <admin|notices|clear>");
+  console.error("usage: node e2e/seed.mjs <admin|nonadmin|notices|alerts|clear>");
   process.exit(1);
 }
