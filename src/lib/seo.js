@@ -83,14 +83,9 @@ export function websiteJsonLd() {
     alternateName: "JNTUH B.Tech Notes",
     url: absoluteUrl("/"),
     inLanguage: SITE_LOCALE,
-    potentialAction: {
-      "@type": "SearchAction",
-      target: {
-        "@type": "EntryPoint",
-        urlTemplate: absoluteUrl("/search") + "?q={search_term_string}",
-      },
-      "query-input": "required name=search_term_string",
-    },
+    // No `SearchAction`/sitelinks search box: Google retired that SERP feature
+    // (2024-11-21) and removed its documentation, and our `/search` target is
+    // `noindex` anyway, so the action could never render.
   };
 }
 
