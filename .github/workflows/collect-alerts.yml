@@ -1,0 +1,118 @@
+# ---------------------------------------------------------------------------
+# JNTUH Alert Radar - automatic notice collection (STAGING ONLY)
+#
+# What this does
+#   Fetches the approved official JNTUH listings, parses them, and stages the
+#   notices the collector does not already know about into the admin-only
+#   `ingestItems` collection, together with a run report (`ingestRuns`) and
+#   per-source health (`ingestSourceHealth`). An administrator then reviews each
+#   staged notice at /admin/ingest and promotes it to a private draft.
+#
+#   It can NEVER publish anything. The collector has no code path that writes
+#   the public `alerts` collection, and firestore.rules requires admin-only
+#   verification metadata before an alert may be `published`.
+#
+# SCHEDULING IS DISABLED
+#   The only trigger below is a manual `workflow_dispatch`. Nothing runs on a
+#   timer, and a staging run additionally requires the repository variable
+#   COLLECTOR_STAGING_ENABLED=true, which only the repository owner can set.
+#   The runner also refuses to stage unless the service-account secret exists.
+#   Read collector/SCHEDULING.md before enabling anything.
+#
+# To enable the timer (a deliberate, reviewed change - see SCHEDULING.md):
+#   1. uncomment the `schedule:` block in `on:`;
+#   2. set repository variable COLLECTOR_STAGING_ENABLED=true;
+#   3. add the FIREBASE_SERVICE_ACCOUNT secret (or configure Workload Identity
+#      Federation and replace the credential step).
+# ---------------------------------------------------------------------------
+name: Collect JNTUH notices (staging only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (read-only, default) or stage (write to ingestItems)"
+        type: choice
+        options:
+          - dry-run
+          - stage
+        default: dry-run
+        required: true
+      max_items:
+        description: "Maximum NEW staged notices for this run (1-300)"
+        type: string
+        default: "100"
+        required: true
+  # Uncomment ONLY after the production rollout is approved (collector/SCHEDULING.md).
+  # schedule:
+  #   - cron: "17 */6 * * *"   # 00:17, 06:17, 12:17 and 18:17 UTC
+
+# Least privilege: read the repository, plus an OIDC token that is only used if
+# Workload Identity Federation replaces the service-account secret.
+permissions:
+  contents: read
+  id-token: write
+
+# Never let two runs overlap: a second concurrent run would re-read and re-plan
+# the same sources.
+concurrency:
+  group: collector-staging
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Recommended hardening: uncomment to require a manual approval before any
+    # collection job runs and to scope the secret to a protected environment.
+    # environment: collector-staging
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        # firebase-admin (a devDependency) is what the staging write path uses.
+        run: npm ci
+
+      - name: Guard - staging requires the owner-set repository variable
+        if: ${{ github.event_name == 'schedule' || inputs.mode == 'stage' }}
+        env:
+          STAGING_ENABLED: ${{ vars.COLLECTOR_STAGING_ENABLED }}
+        run: |
+          if [ "$STAGING_ENABLED" != "true" ]; then
+            echo "::error::Staging is disabled. Set the repository variable COLLECTOR_STAGING_ENABLED=true only after approval (see collector/SCHEDULING.md)."
+            exit 1
+          fi
+
+      - name: Write the service-account credential to a temporary file
+        if: ${{ github.event_name == 'schedule' || inputs.mode == 'stage' }}
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::The FIREBASE_SERVICE_ACCOUNT secret is not configured."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$SERVICE_ACCOUNT_JSON" > "$RUNNER_TEMP/collector-service-account.json"
+          echo "Wrote the collector credential to \$RUNNER_TEMP/collector-service-account.json"
+
+      - name: Run the collector
+        env:
+          COLLECTOR_MODE: ${{ (github.event_name == 'schedule' || inputs.mode == 'stage') && 'stage' || 'dry-run' }}
+          COLLECTOR_STAGING_ENABLED: ${{ vars.COLLECTOR_STAGING_ENABLED }}
+          COLLECTOR_PROJECT_ID: jntuh-notes-6ef74
+          COLLECTOR_MAX_ITEMS: ${{ inputs.max_items }}
+          # Harmless during a dry run: the collector only reads ADC when it is
+          # actually given --write, and the policy only emits --write to stage.
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/collector-service-account.json
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          CI: "true"
+        run: node collector/scheduledRun.mjs

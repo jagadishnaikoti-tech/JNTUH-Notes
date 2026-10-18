@@ -11,6 +11,9 @@ feature on the site.
 > publish or modify an alert. See [Dry-run mode](#dry-run-mode),
 > [Write mode (staging)](#write-mode-staging) and
 > [Why automatic publication is disabled](#why-automatic-publication-is-disabled).
+>
+> Automatic collection is **not scheduled**: the scheduled runner is implemented
+> but disabled until it is separately approved. See [SCHEDULING.md](SCHEDULING.md).
 
 ---
 
@@ -372,13 +375,34 @@ never written by the collector.
 
 ---
 
+## Scheduling
+
+Automatic collection is implemented but **disabled** — nothing runs on a timer.
+The runner is a scheduled GitHub Actions workflow
+(`.github/workflows/collect-alerts.yml`) that calls `npm run collector:schedule`
+(`collector/scheduledRun.mjs`). That script resolves
+[`lib/runPolicy.mjs`](lib/runPolicy.mjs) and then executes this same CLI, so the
+scheduler adds no second collection pipeline and no new write path.
+
+- The only trigger is a manual dispatch; the `schedule:` block ships commented out.
+- A staging run additionally requires the owner-set repository variable
+  `COLLECTOR_STAGING_ENABLED=true`, and is refused if the project is not
+  `jntuh-notes-6ef74`, if a Firestore emulator host is set, if there are no
+  Application Default Credentials, if `--offline` fixtures are requested, or if
+  `--max-items` is missing, zero or over the cap.
+- Chosen runner, why not Cloud Functions, credentials, failure handling, and how
+  to enable or disable it: [SCHEDULING.md](SCHEDULING.md).
+
+---
+
 ## Remaining work
 
-- Decide the scheduler (GitHub Actions cron vs. Cloud Functions) and whether the
-  project moves to the Blaze plan. Nothing is scheduled today: a run is a manual
-  command and dry run is the default.
+- Nothing is scheduled yet. The runner is implemented and disabled; enabling it
+  is a separate, approved rollout ([SCHEDULING.md](SCHEDULING.md)).
 - Persisting the dedup baseline so cross-run duplicate detection is automatic
-  rather than supplied via `--baseline`.
+  rather than supplied via `--baseline`. (In write mode the stored
+  `ingestItems` documents already provide this: an item id is derived from the
+  canonical source URL, so a retry or a re-run refreshes instead of duplicating.)
 - Extending the `notifications` adapter to crawl the older archived rows
   (~500 of them are only reachable through the site's own AJAX paging).
 - Deciding a retention/pruning policy for staged notices once they are promoted
