@@ -25,7 +25,7 @@ npm run build     # -> ./dist
 - favicon set (`favicon.svg`, `favicon.ico`, `favicon-32.png`, `apple-touch-icon.png`),
   `og-image.png` (1200×630 social card), `site.webmanifest`
 - `robots.txt` (allows crawling, references the absolute sitemap URL)
-- `sitemap.xml` (built from the real route + resource inventory, 66 URLs)
+- `sitemap.xml` (built from the real route + resource inventory, 67 URLs)
 - one static HTML document per canonical route, both as `dist/<route>/index.html`
   and `dist/<route>.html` (see section 2)
 
@@ -86,11 +86,11 @@ so it can never drift from the site.
 
 | Item | What is generated |
 | --- | --- |
-| Per-route HTML | `dist/<route>/index.html` + `dist/<route>.html` for all 67 public routes (home, years, subjects, question sets, coding resources, site map, legal pages, search) |
+| Per-route HTML | `dist/<route>/index.html` + `dist/<route>.html` for all 68 public routes (home, years, subjects, question sets, coding resources, site map, legal pages, search) |
 | Admin documents | `dist/admin/**/index.html` + `dist/admin/*.html` for the 6 private admin routes, each with a `noindex, nofollow` head and no sitemap entry — present only so `/admin/*` deep links resolve on the static host |
 | Canonical URLs | Absolute, HTTPS, no trailing slash, one URL per page (`https://jntuh-notes.vercel.app/<route>`) |
-| Structured data | `WebSite` (with `SearchAction`) on the home page; `BreadcrumbList` on every other page — matching the visible breadcrumbs |
-| `sitemap.xml` | 66 indexable URLs (search excluded); well-formed XML; regenerated on every build |
+| Structured data | `WebSite` on the home page; `BreadcrumbList` on every other page — matching the visible breadcrumbs |
+| `sitemap.xml` | 67 indexable URLs (search excluded); well-formed XML; regenerated on every build |
 | `robots.txt` | Allows all public content, points to the absolute sitemap URL |
 | `noindex` | Applied to `/search` (utility page, excluded from the sitemap), to the client-rendered 404, and to every `/admin/*` document (`noindex, nofollow`) |
 | Social sharing | `og-image.png` (real brand asset) + OG/Twitter tags on every page |
@@ -161,7 +161,7 @@ required. Once available:
 - Hard-refresh a deep link, e.g. `https://<domain>/privacy-policy`, and confirm
   it renders (not a 404).
 - `https://<domain>/robots.txt` returns the text file; `https://<domain>/sitemap.xml`
-  returns XML with 65 URLs.
+  returns XML with 67 URLs.
 - View the page source of `/year/2` and confirm its own `<title>`, meta
   description, canonical and JSON-LD are present (not the homepage defaults).
 
@@ -208,8 +208,8 @@ For Google Search Console:
 | --- | --- |
 | Production build (`npm run build`, incl. sitemap + prerendered head) | ✅ passing |
 | SPA deep-link refresh | ✅ confirmed locally via `vite preview` |
-| Per-route title/description/canonical/robots (66 documents) | ✅ 66 unique, validated |
-| `sitemap.xml` (66 URLs, well-formed, canonical, from real data) | ✅ validated |
+| Per-route title/description/canonical/robots (68 documents) | ✅ 68 unique, validated |
+| `sitemap.xml` (67 URLs, well-formed, canonical, from real data) | ✅ validated |
 | `robots.txt` (allow-all + sitemap reference) | ✅ in place |
 | Structured data (`WebSite` + `BreadcrumbList`) | ✅ validates (JSON-LD parse-checked on all routes) |
 | Open Graph / Twitter card + `og-image.png` | ✅ in place |

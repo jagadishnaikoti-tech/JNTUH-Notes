@@ -105,6 +105,12 @@ function buildSections() {
       { label: "Select Year", to: "/years", meta: "Browse subjects by year" },
       { label: "Learn Code", to: "/code", meta: "Coding & placement resources" },
       { label: "Search", to: "/search", meta: "Search subjects, units and documents" },
+      {
+        label: "Alert Radar",
+        to: "/alerts",
+        meta: "Verified JNTUH notices & deadlines",
+        keywords: "alerts notices deadlines exam updates",
+      },
       { label: "Site Map", to: "/sitemaps", meta: "This page", current: true },
     ],
   });
