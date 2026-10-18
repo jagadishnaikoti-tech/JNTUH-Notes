@@ -5,8 +5,11 @@
 #   Fetches the approved official JNTUH listings, parses them, and stages the
 #   notices the collector does not already know about into the admin-only
 #   `ingestItems` collection, together with a run report (`ingestRuns`) and
-#   per-source health (`ingestSourceHealth`). An administrator then reviews each
-#   staged notice at /admin/ingest and promotes it to a private draft.
+#   per-source health (`ingestSourceHealth`). Those three collections live in
+#   the named Firestore database `staging`, NOT in the public `(default)`
+#   database, so the collector credential cannot reach the public data at all
+#   (see collector/SECURITY.md). An administrator then reviews each staged
+#   notice at /admin/ingest and promotes it to a private draft in `(default)`.
 #
 #   It can NEVER publish anything. The collector has no code path that writes
 #   the public `alerts` collection, and firestore.rules requires admin-only
@@ -108,6 +111,10 @@ jobs:
           COLLECTOR_MODE: ${{ (github.event_name == 'schedule' || inputs.mode == 'stage') && 'stage' || 'dry-run' }}
           COLLECTOR_STAGING_ENABLED: ${{ vars.COLLECTOR_STAGING_ENABLED }}
           COLLECTOR_PROJECT_ID: jntuh-notes-6ef74
+          # Documentation, not configuration: the collector is pinned to the
+          # `staging` database in code, and the policy REFUSES any other value
+          # (including "(default)"), so this cannot be used to widen access.
+          COLLECTOR_DATABASE_ID: staging
           COLLECTOR_MAX_ITEMS: ${{ inputs.max_items }}
           # Harmless during a dry run: the collector only reads ADC when it is
           # actually given --write, and the policy only emits --write to stage.

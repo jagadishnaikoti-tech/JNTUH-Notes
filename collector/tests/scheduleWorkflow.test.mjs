@@ -82,6 +82,13 @@ test("the run step passes the run metadata the run document records", () => {
   assert.match(live, /GITHUB_ACTOR:\s*\$\{\{\s*github\.actor\s*\}\}/);
   // The project id is hard-coded so the policy's allowlist check is meaningful.
   assert.match(live, /COLLECTOR_PROJECT_ID:\s*jntuh-notes-6ef74/);
+  // The staging database is named explicitly. It is an assertion, not a
+  // setting: runPolicy refuses any value but "staging".
+  assert.match(live, /COLLECTOR_DATABASE_ID:\s*staging/);
+  assert.ok(
+    !/COLLECTOR_DATABASE_ID:\s*["']?\(default\)/.test(live),
+    "the workflow must never name the public database",
+  );
 });
 
 test("the scheduling documentation covers the required operational facts", () => {

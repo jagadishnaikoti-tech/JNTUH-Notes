@@ -17,3 +17,6 @@ serviceAccount*.json
 firestore-debug.log
 firebase-debug.log
 ui-debug.log
+
+# Local Firebase CLI project aliases. Never commit this file.
+.firebaserc

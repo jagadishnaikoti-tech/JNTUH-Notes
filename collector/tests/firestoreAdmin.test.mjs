@@ -3,7 +3,9 @@ import { test } from "node:test";
 
 import {
   STAGING_COLLECTION_NAMES,
+  STAGING_DATABASE_ID,
   isStagingCollection,
+  resolveDatabaseId,
 } from "../lib/runReport.mjs";
 import {
   createIngestStore,
@@ -17,6 +19,21 @@ test("isStagingCollection accepts only staging collections", () => {
   for (const name of STAGING_COLLECTION_NAMES) assert.ok(isStagingCollection(name));
   assert.ok(!isStagingCollection("alerts"));
   assert.ok(!isStagingCollection("analyticsEvents"));
+});
+
+test("resolveDatabaseId pins staging and refuses (default) or malformed ids", () => {
+  assert.equal(STAGING_DATABASE_ID, "staging");
+  // The default when nothing is requested is the staging database itself.
+  assert.equal(resolveDatabaseId(), "staging");
+  assert.equal(resolveDatabaseId("staging"), "staging");
+
+  for (const unsafe of ["(default)", "default", "", "   ", null, "Staging", "1staging", "stag ing", "a", "x".repeat(64), "prod"]) {
+    assert.throws(
+      () => resolveDatabaseId(unsafe),
+      /database/i,
+      `expected ${JSON.stringify(unsafe)} to be refused`,
+    );
+  }
 });
 
 test("isTransientFirestoreError handles numbers, strings, syscalls and cause", () => {
@@ -106,4 +123,21 @@ test("createIngestStore throws without valid project/flags", () => {
   assert.throws(() => createIngestStore({ projectId: "wrong" }));
   assert.throws(() => createIngestStore({ projectId: "jntuh-notes-6ef74", emulator: true, env: {} }));
   assert.throws(() => createIngestStore({ projectId: "jntuh-notes-6ef74", emulator: false, env: { FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080" } }));
+});
+
+test("createIngestStore refuses every database but staging", () => {
+  const base = {
+    projectId: "jntuh-notes-6ef74",
+    emulator: true,
+    env: { FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080" },
+  };
+  // The database is checked BEFORE any app or credential is created, so these
+  // all throw a configuration error rather than connecting anywhere.
+  for (const databaseId of ["(default)", "default", "prod", "alerts", "", "   ", null]) {
+    assert.throws(
+      () => createIngestStore({ ...base, databaseId }),
+      /database/i,
+      `expected database ${JSON.stringify(databaseId)} to be refused`,
+    );
+  }
 });

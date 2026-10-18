@@ -4,11 +4,17 @@
 // Everything else in the collector that needs Firestore is dependency-injected.
 // This file is responsible for:
 //   - accepting only the three staging collection names;
+//   - connecting ONLY to the named `staging` database (never `(default)`);
 //   - reading documents by id in chunks (<=300) with retry;
 //   - writing at most 400 operations per batch, retrying only transient errors;
 //   - respecting Application Default Credentials, emulator mode and project
 //     verification (fail closed);
 //   - never reading or writing the public alert collection.
+//
+// Database selection is explicit and fail-closed. `createIngestStore` resolves
+// the database id through `resolveDatabaseId`, which rejects `(default)`, an
+// empty id and any malformed id. There is NO fallback path that could silently
+// write staging data into the public database.
 // ---------------------------------------------------------------------------
 
 import { applicationDefault, deleteApp, getApp, getApps, initializeApp } from "firebase-admin/app";
@@ -20,8 +26,10 @@ import {
   MAX_READ_SIZE,
   STAGING_COLLECTIONS,
   STAGING_COLLECTION_NAMES,
+  STAGING_DATABASE_ID,
   chunkOperations,
   isStagingCollection,
+  resolveDatabaseId,
 } from "./runReport.mjs";
 
 export const APP_NAME = "jntuh-collector";
@@ -141,6 +149,7 @@ function assertCollection(collection) {
 /** Create the narrow-store used by the collector. This is the only place that touches firebase-admin. */
 export function createIngestStore({
   projectId,
+  databaseId = STAGING_DATABASE_ID,
   emulator = false,
   app = null,
   quiet = false,
@@ -149,6 +158,10 @@ export function createIngestStore({
 } = {}) {
   const resolved = resolveProjectId({ requested: projectId, env, allowed: allowedProjects });
   if (!resolved.ok) throw new Error(resolved.reason);
+
+  // Fail closed on the database too: an empty, malformed or `(default)` id is a
+  // configuration error, not a reason to fall back to the public database.
+  const resolvedDatabaseId = resolveDatabaseId(databaseId);
 
   if (emulator) {
     const parsed = parseEmulatorHost(env);
@@ -171,7 +184,8 @@ export function createIngestStore({
     );
   }
 
-  const db = getFirestore(firebaseApp);
+  // The database id is passed explicitly: a named database, never `(default)`.
+  const db = getFirestore(firebaseApp, resolvedDatabaseId);
   try {
     db.settings({ ignoreUndefinedProperties: true });
   } catch (error) {
@@ -184,6 +198,10 @@ export function createIngestStore({
 
   if (firebaseApp.options.projectId !== requestedProject) {
     throw new Error(`project id mismatch after initialisation (requested "${requestedProject}", got "${firebaseApp.options.projectId}")`);
+  }
+
+  if (db.databaseId && db.databaseId !== resolvedDatabaseId) {
+    throw new Error(`database id mismatch after initialisation (requested "${resolvedDatabaseId}", got "${db.databaseId}")`);
   }
 
   async function readStaging(collection, ids) {
@@ -259,6 +277,7 @@ export function createIngestStore({
 
   return {
     projectId: requestedProject,
+    databaseId: resolvedDatabaseId,
     mode: emulator ? "emulator" : "production",
     isEmulator: emulator,
     db,

@@ -14,23 +14,34 @@ something fails, and how to turn it off.
 ## What a scheduled run does — and does not do
 
 A run fetches the approved official listings, parses them and writes **only** to
-the admin-only staging collections:
+the admin-only staging collections, and only ever in the separate `staging`
+Firestore database:
 
-| Collection | Contents |
-| ---------- | -------- |
-| `ingestItems` | one document per notice the collector had not seen before |
-| `ingestRuns` | one report per run (status, counters, per-source outcome) |
-| `ingestSourceHealth` | rolling per-source health and the last error |
+| Collection | Contents | Database |
+| ---------- | -------- | -------- |
+| `ingestItems` | one document per notice the collector had not seen before | `staging` |
+| `ingestRuns` | one report per run (status, counters, per-source outcome) | `staging` |
+| `ingestSourceHealth` | rolling per-source health and the last error | `staging` |
+
+The public `alerts` collection, analytics, channels, settings and users all live
+in the `(default)` database. Because Firestore IAM is granted per **database**,
+`staging` is what makes the credential's scope expressible: with an IAM condition
+on `projects/jntuh-notes-6ef74/databases/staging` the collector literally cannot
+reach `(default)`. The database id is **pinned in code** (`STAGING_DATABASE_ID` in
+[`lib/runReport.mjs`](lib/runReport.mjs)) — there is no flag or environment
+variable that can redirect a staging write, and a bad value refuses the run
+instead of falling back. If the `staging` database does not exist yet, every
+write fails closed.
 
 It can never publish. There is no code path in the collector that writes the
 public `alerts` collection, and `firestore.rules` requires an admin-only
 `verifiedAt` / `verifiedBy` pair before any alert may be `published`. Publishing
 remains a manual administrator action in the web app.
 
-The three-collection restriction is enforced by the collector's own
-`assertCollection()` allowlist, **not by IAM**: the credential's role is
-database-wide, because Firestore offers no collection-level IAM. The role still
-takes document deletion and all database administration away from the credential.
+The three-collection restriction is *additionally* enforced by the collector's own
+`assertCollection()` allowlist, and the database choice by `resolveDatabaseId()`.
+Neither replaces IAM: use the IAM condition from [`SECURITY.md`](SECURITY.md) for
+the enforced boundary, and treat the code checks as defence in depth.
 [`SECURITY.md`](SECURITY.md) states exactly what that boundary is, what it is not,
 and how to verify the grant.
 
@@ -77,12 +88,14 @@ staged until the timer is back; nothing is published either way. The manual
 ## Authentication
 
 The collector writes Firestore through the **Admin SDK**, which bypasses
-`firestore.rules`; **IAM is the real boundary** for a scheduled run — and it is a
-*database-wide* boundary, because Firestore IAM cannot be scoped to a collection.
-The custom role below therefore reduces what a compromised credential could do
-without isolating the three staging collections; [`SECURITY.md`](SECURITY.md)
-states that boundary in full. Two credential options are supported; both keep the
-credential out of the repository.
+`firestore.rules`; **IAM is the real boundary** for a scheduled run. Firestore
+IAM cannot be scoped to a collection, but it *can* be scoped to a **database** —
+so the boundary is a database condition on `projects/jntuh-notes-6ef74/databases/staging`,
+and the collector's code is pinned to that same database. The custom role below
+additionally takes document deletion and all database administration away from the
+credential. [`SECURITY.md`](SECURITY.md) states that boundary in full. Two
+credential options are supported; both keep the credential out of the
+repository.
 
 ### Option A — service-account secret (implemented)
 
@@ -92,11 +105,12 @@ credential out of the repository.
    `projects/jntuh-notes-6ef74/roles/jntuhCollectorStaging`, defined in
    [`iam/collector-staging-role.json`](iam/collector-staging-role.json). It allows
    only `datastore.entities.get`, `datastore.entities.create` and
-   `datastore.entities.update` — exactly the collector's operation surface. Do
-   **not** grant `roles/owner`, `roles/editor`, `roles/datastore.user` or
-   `firebase.admin`: they are broader and include document deletion and database
-   administration. [`SECURITY.md`](SECURITY.md) has the create, bind and verify
-   commands.
+   `datastore.entities.update` — exactly the collector's operation surface. Add
+   the **IAM condition** from [`SECURITY.md`](SECURITY.md) that pins the grant to
+   `projects/jntuh-notes-6ef74/databases/staging`. Do **not** grant
+   `roles/owner`, `roles/editor`, `roles/datastore.user` or `firebase.admin`: they
+   are broader and include document deletion and database administration.
+   [`SECURITY.md`](SECURITY.md) has the create, bind and verify commands.
 3. Add its JSON key as the repository secret `FIREBASE_SERVICE_ACCOUNT`.
 4. The workflow writes that secret to `$RUNNER_TEMP/collector-service-account.json`
    (mode `0600`) and points `GOOGLE_APPLICATION_CREDENTIALS` at it. The key never
@@ -141,10 +155,11 @@ A staging run must pass all three; a dry run needs none:
    Only the owner can set it, and it is checked both by the workflow guard step
    and again, independently, by `collector/lib/runPolicy.mjs`.
 3. **Policy validation** — before the CLI is even started, the policy refuses a
-   staging run whose project id is not `jntuh-notes-6ef74`, that has a Firestore
-   emulator host set, that has no Application Default Credentials, that asks for
-   `--offline` (replaying a saved page instead of the live source), or that asks
-   for an unbounded/oversized `--max-items`.
+   staging run whose project id is not `jntuh-notes-6ef74`, whose
+   `COLLECTOR_DATABASE_ID` (if set at all) is anything but `staging`, that has a
+   Firestore emulator host set, that has no Application Default Credentials, that
+   asks for `--offline` (replaying a saved page instead of the live source), or
+   that asks for an unbounded/oversized `--max-items`.
 
 The scheduler cannot widen its own authority: it does not forward
 `process.argv` (it refuses unexpected arguments outright, so `--help` can never
@@ -190,15 +205,20 @@ it should be done until the rollout is explicitly approved.
    npm run build && npm run test:unit && npm run test:collector && npm run test:rules
    ```
 
-2. Create the service account and grant the custom role `jntuhCollectorStaging`
-   (Option A above, see [`SECURITY.md`](SECURITY.md)), then add the
-   `FIREBASE_SERVICE_ACCOUNT` repository secret.
-3. Set the repository variable `COLLECTOR_STAGING_ENABLED=true`.
-4. Run the workflow once manually with `mode: dry-run` and read the log — it
+2. Create the **`staging` Firestore database** and deploy both rulesets
+   (`firebase deploy --only firestore:rules,firestore:indexes`) — the exact
+   commands are in [SECURITY.md](SECURITY.md). The collector cannot write
+   anywhere until this database exists.
+3. Create the service account and grant the custom role `jntuhCollectorStaging`
+   **with the `staging`-database condition** (Option A above, see
+   [`SECURITY.md`](SECURITY.md)), then add the `FIREBASE_SERVICE_ACCOUNT`
+   repository secret.
+4. Set the repository variable `COLLECTOR_STAGING_ENABLED=true`.
+5. Run the workflow once manually with `mode: dry-run` and read the log — it
    contacts the live official pages, parses them and writes nothing.
-5. Run it once with `mode: stage`, then open `/admin/ingest` and confirm the new
+6. Run it once with `mode: stage`, then open `/admin/ingest` and confirm the new
    notices, the run report and the source health look right.
-6. Only then uncomment the `schedule:` block in
+7. Only then uncomment the `schedule:` block in
    `.github/workflows/collect-alerts.yml` and merge that change.
 
 Recommended: uncomment `environment: collector-staging` in the workflow and add
@@ -258,10 +278,25 @@ the run is a `dry-run`. A **staging** run is deliberately refused while
 `node collector/index.mjs --write --emulator --project jntuh-notes-6ef74`),
 never through `scheduledRun.mjs`.
 
+### The emulator and the two-database split
+
+The Firestore emulator warns *"Cloud Firestore Emulator does not support multiple
+databases yet"* and firebase-tools loads **no** rules when `firebase.json` lists
+more than one database, so [`firebase.e2e.json`](../firebase.e2e.json) keeps a
+single entry for the emulator. The rules tests
+([`tests/rules/emulatorDb.mjs`](tests/rules/emulatorDb.mjs)) then load each
+database's ruleset into the `staging` and `(default)` databases explicitly, and
+clear each database explicitly, so the suite still exercises the real
+two-database layout. If a future emulator drops named-database support these tests
+fail loudly rather than passing silently; see
+[`SECURITY.md`](SECURITY.md#the-emulator-does-not-support-multiple-databases).
+
 The policy itself is covered by
-[`collector/tests/runPolicy.test.mjs`](tests/runPolicy.test.mjs), and the workflow
+[`collector/tests/runPolicy.test.mjs`](tests/runPolicy.test.mjs), the workflow
 file (no timer, no secrets, least privilege) by
-[`collector/tests/scheduleWorkflow.test.mjs`](tests/scheduleWorkflow.test.mjs).
+[`collector/tests/scheduleWorkflow.test.mjs`](tests/scheduleWorkflow.test.mjs),
+and the database boundary — code, config, rules, and the frontend — by
+[`collector/tests/stagingDatabase.test.mjs`](tests/stagingDatabase.test.mjs).
 
 ---
 

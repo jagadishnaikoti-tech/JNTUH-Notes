@@ -28,6 +28,41 @@ export const MAX_READ_SIZE = 300;
 export const INTENDED_PROJECT_ID = "jntuh-notes-6ef74";
 
 /**
+ * The named Firestore database this collector stages into. The public `alerts`
+ * collection lives in `(default)`, so staging is isolated in its own database -
+ * that gives the collector credential a *database-level* boundary that cannot
+ * reach public data (Google Cloud IAM cannot be scoped to a collection; see
+ * ../SECURITY.md). There is deliberately NO fallback to `(default)`: an unknown
+ * or missing database id is a hard error, never a silent public-database write.
+ */
+export const STAGING_DATABASE_ID = "staging";
+
+/** Firestore's reserved id for the primary database - never a staging target. */
+export const DEFAULT_DATABASE_ID = "(default)";
+
+/**
+ * Validate a Firestore database id for the collector. The collector is pinned to
+ * exactly one database, so this returns `STAGING_DATABASE_ID` or throws: an
+ * empty value, `(default)`, or any other named database is a hard configuration
+ * error. That is the whole point - there is no path by which a missing or wrong
+ * value could silently reach the public database.
+ */
+export function resolveDatabaseId(requested = STAGING_DATABASE_ID) {
+  const id = String(requested ?? "").trim();
+  if (!id) {
+    throw new Error(
+      `A staging database id is required: the collector writes only to "${STAGING_DATABASE_ID}" (never "${DEFAULT_DATABASE_ID}").`
+    );
+  }
+  if (id !== STAGING_DATABASE_ID) {
+    throw new Error(
+      `Refusing Firestore database "${id}": the collector is pinned to "${STAGING_DATABASE_ID}" and never writes to "${DEFAULT_DATABASE_ID}".`
+    );
+  }
+  return id;
+}
+
+/**
  * The ONLY collections the collector may touch. The public alert collection is
  * deliberately absent and must never appear here: the collector stages notices
  * for a human to promote; it never creates, verifies or publishes an alert.
@@ -288,6 +323,7 @@ export function buildRunDocument({
   collectorVersion = "unknown",
   dryRun = true,
   projectId = "",
+  databaseId = "",
   mode = "dry-run",
   error = null,
   sources = [],
@@ -308,6 +344,7 @@ export function buildRunDocument({
     collectorVersion: String(collectorVersion ?? "unknown").slice(0, 40),
     dryRun: Boolean(dryRun),
     projectId: String(projectId ?? "").slice(0, 80),
+    databaseId: String(databaseId ?? "").slice(0, 80),
     mode: String(mode ?? "").slice(0, 20),
     startedAt: started,
     finishedAt: finished,

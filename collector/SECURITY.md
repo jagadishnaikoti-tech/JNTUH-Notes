@@ -1,11 +1,18 @@
-# Collector security boundary (Firestore IAM)
+# Collector security boundary (Firestore IAM + database isolation)
 
-**Status: documented and configured as code — NOT applied.** The role definition
-in [`iam/collector-staging-role.json`](iam/collector-staging-role.json) is
-checked in so it can be reviewed, tested and applied deliberately. This change
-created **no** Google Cloud IAM binding, **no** credential and **no** production
-data. The commands below are owner actions, listed for the approved rollout in
-[`SCHEDULING.md`](SCHEDULING.md).
+**Status: documented and configured as code — NOT applied.** Two things are
+checked in so they can be reviewed, tested and applied deliberately:
+
+- [`iam/collector-staging-role.json`](iam/collector-staging-role.json) — the
+  least-privilege custom role;
+- the **separate `staging` database** the collector writes to
+  ([`../firebase.json`](../firebase.json),
+  [`../firestore.staging.rules`](../firestore.staging.rules), and the collector's
+  pinned `STAGING_DATABASE_ID` in [`lib/runReport.mjs`](lib/runReport.mjs)).
+
+This change created **no** Google Cloud IAM binding, **no** Firestore database,
+**no** credential and **no** production data. The commands below are owner
+actions, listed for the approved rollout in [`SCHEDULING.md`](SCHEDULING.md).
 
 ---
 
@@ -35,23 +42,63 @@ So, stated plainly:
 1. A custom role can make the credential **less dangerous** — it cannot delete a
    document, and it cannot create/delete databases, change indexes, import,
    export, bulk-delete, restore or clone. It reduces risk but **does not isolate
-   individual collections**, and it **cannot make the collector "staging-only"**
-   at the IAM layer.
-2. With this role, a leaked collector credential could still **read the whole
-   database** and **write to any collection in that database, including
-   `alerts`** (it could write a document the public site would treat as a
-   published alert, because the Admin SDK bypasses both the collector's
-   drafting guard and `firestore.rules`). It could not delete anything.
-3. The collection restriction therefore remains **application-level**:
+   individual collections** within a database.
+2. A separate database **does** isolate collections, because the isolation
+   boundary is the database. With the collector writing only to `staging`, and
+   the public `alerts` collection living only in `(default)`, an IAM condition on
+   `projects/jntuh-notes-6ef74/databases/staging` gives an **IAM-enforced**
+   guarantee that the collector credential cannot touch `alerts` — the part the
+   custom role alone could never express.
+3. The collection restriction also remains **application-level**:
    `assertCollection()` in [`lib/firestoreAdmin.mjs`](lib/firestoreAdmin.mjs)
    refuses any collection outside `ingestItems` / `ingestRuns` /
-   `ingestSourceHealth` on every read and every mutation. Treat that as defence
-   in depth, never as IAM isolation.
-4. The only way to get an **IAM-enforced** guarantee that the collector cannot
-   reach `alerts` is to move the three staging collections into a **separate
-   Firestore database** and grant this role only on that database. That is a
-   larger migration (the emulator does not support multiple databases) and has
-   **not** been done.
+   `ingestSourceHealth` on every read and every mutation, and the store refuses
+   any database other than `staging` (`resolveDatabaseId`). Treat both as defence
+   in depth, never as the whole boundary.
+4. The database split is implemented in code and configuration (see
+   [Option B](#option-b-separate-staging-database) below) but is **not yet
+   applied in Google Cloud**: the `staging` database does not exist until the
+   owner creates it, and the IAM condition is not bound until the owner adds it.
+
+## Option B: separate staging database
+
+The public `alerts` collection, analytics, channels, settings and users stay in
+the **`(default)`** database ([`../firestore.rules`](../firestore.rules)). The
+collector's three staging collections live in a second named database,
+**`staging`** ([`../firestore.staging.rules`](../firestore.staging.rules)).
+
+What is checked in:
+
+| Piece | Where | What it does |
+| --- | --- | --- |
+| Database list | [`../firebase.json`](../firebase.json) | `firebase deploy --only firestore:rules,firestore:indexes` now deploys each database's rules and indexes (`(default)` → `firestore.rules`; `staging` → `firestore.staging.rules`). |
+| Pinned id | [`lib/runReport.mjs`](lib/runReport.mjs) `STAGING_DATABASE_ID` | The collector's single source of truth for "which database". `resolveDatabaseId()` returns only `"staging"` and throws for `(default)`, empty or any other value. |
+| Store | [`lib/firestoreAdmin.mjs`](lib/firestoreAdmin.mjs) | `getFirestore(app, resolvedDatabaseId)` — an explicit named database, never the default, with a post-init `databaseId` mismatch check. |
+| Run report | [`write.mjs`](write.mjs) / [`index.mjs`](index.mjs) | Every run document records `databaseId` so the audit trail says which database the run wrote to. |
+| Policy | [`lib/runPolicy.mjs`](lib/runPolicy.mjs) | A staging run is pinned to `staging`; `COLLECTOR_DATABASE_ID` is an *assertion* and any value other than `"staging"` refuses the run. |
+| Admin UI | [`../src/lib/ingest.js`](../src/lib/ingest.js) | Opens two handles from one app: `db` = `staging` for the ingest collections, `alertsDb` = `(default)` for the alert a promotion creates. |
+| Promotion | [`../src/lib/ingest.js`](../src/lib/ingest.js) | Firestore has no cross-database transaction, so promotion is create-the-draft-first (deterministic id, create-if-absent, never overwrite) then claim-the-item-in-`staging`. A retry heals a half-finished promotion; a notice can never fork two alerts. |
+
+### The emulator does not support multiple databases
+
+The Firestore emulator (firebase-tools 15.34.0) prints *"Cloud Firestore
+Emulator does not support multiple databases yet"* and the CLI loads **no**
+rules at all when `firebase.json` lists more than one database. The workaround
+the tests use, and its limits:
+
+- [`../firebase.e2e.json`](../firebase.e2e.json) keeps a **single** firestore
+  entry (so `emulators:exec` starts cleanly), and
+  [`tests/rules/emulatorDb.mjs`](tests/rules/emulatorDb.mjs) loads each database's
+  ruleset explicitly through the emulator's rules REST endpoint
+  (`PUT /emulator/v1/projects/{p}/databases/{db}:securityRules`) and clears each
+  database explicitly. The emulator *binary* does keep named databases separate
+  and honours per-database rules; the tests exercise that real layout.
+- If a future emulator drops named-database isolation or per-database rules, the
+  rules tests **fail loudly** (a `allow`-expecting assertion sees
+  `PERMISSION_DENIED`, or seeded documents are missing) rather than passing
+  silently.
+- Nothing about this workaround changes production: `firebase.json` (the deploy
+  config) is the multi-database list; only the test config is single-entry.
 
 ## What the role grants, and why
 
@@ -100,27 +147,21 @@ gcloud iam roles create jntuhCollectorStaging \
   --project=jntuh-notes-6ef74 \
   --file=collector/iam/collector-staging-role.json
 
-# 2. bind it to the dedicated collector service account - and ONLY it
-gcloud projects add-iam-policy-binding jntuh-notes-6ef74 \
-  --member='serviceAccount:collector-runner@jntuh-notes-6ef74.iam.gserviceaccount.com' \
-  --role='projects/jntuh-notes-6ef74/roles/jntuhCollectorStaging'
-```
-
-Optional extra hardening — pin the service account to the default database, so a
-future second database is unreachable. The condition is documented for
-REST/client-library access (which is what the Admin SDK uses) and is ignored only
-by the Cloud console:
-
-```bash
+# 2. bind it to the dedicated collector service account - and ONLY to staging
 gcloud projects add-iam-policy-binding jntuh-notes-6ef74 \
   --member='serviceAccount:collector-runner@jntuh-notes-6ef74.iam.gserviceaccount.com' \
   --role='projects/jntuh-notes-6ef74/roles/jntuhCollectorStaging' \
-  --condition='expression=resource.name=="projects/jntuh-notes-6ef74/databases/(default)",title=default-database-only'
+  --condition='expression=resource.name=="projects/jntuh-notes-6ef74/databases/staging",title=staging-database-only'
 ```
 
-Verify it with one staging run. A condition that does not match fails **closed**
-(`PERMISSION_DENIED`), never as a silent write; if that happens, drop the
-condition and keep the role alone as the change.
+The condition is **required**, not optional: do not also grant this service
+account an unconditional binding for this role (or any broader Firestore role),
+because that would bypass the database restriction. If an unconditional binding
+was previously added, remove it before relying on this condition. The condition
+is documented for REST/client-library access (which is what the Admin SDK uses)
+and is ignored only by the Cloud console. A condition that does not match fails
+**closed** (`PERMISSION_DENIED`), never as a silent write; if that happens,
+check the database id in the condition first (`staging`, not `(default)`).
 
 ## Verifying it
 
@@ -128,11 +169,11 @@ condition and keep the role alone as the change.
 # the role's exact contents
 gcloud iam roles describe jntuhCollectorStaging --project=jntuh-notes-6ef74
 
-# the service account's bindings: expect exactly one row, the custom role
+# the service account's bindings: expect only the conditional custom-role grant
 gcloud projects get-iam-policy jntuh-notes-6ef74 \
   --flatten="bindings[].members" \
   --filter="bindings.members:collector-runner@jntuh-notes-6ef74.iam.gserviceaccount.com" \
-  --format="table(bindings.role)"
+  --format="table(bindings.role,bindings.condition.expression)"
 ```
 
 The `datastore.entities.get/create/update` permissions can also be confirmed with
@@ -156,9 +197,39 @@ real staging run proves it necessary — the failure mode is fail-closed:
 Do **not** add `datastore.entities.delete` to work around an error: a delete that
 is denied is the boundary working.
 
+## Creating the staging database and deploying its rules (owner action)
+
+The `staging` database and the split rulesets are configuration in this
+repository, not something this change applied. Before the first staging run the
+owner must:
+
+```bash
+# 1. create the second Firestore database. `firebase firestore:databases:create`
+#    is the CLI spelling; it must be a NATIVE Firestore database in the same
+#    project and region as the app.
+firebase firestore:databases:create staging \
+  --project jntuh-notes-6ef74 \
+  --location <the region of the (default) database>
+
+# 2. deploy BOTH rulesets and BOTH index sets in one command (firebase.json
+#    lists the two databases, so `test:rules`/CI can verify them too)
+firebase deploy --only firestore:rules,firestore:indexes --project jntuh-notes-6ef74
+
+# 3. move any existing staging documents from the old location into the new
+#    database. The previous layout stored them in `(default)`; they are now
+#    denied there, so any leftovers are invisible to the app until copied.
+#    Copy them deliberately (a one-off script or the console) - do not rely on
+#    the app to fall back.
+```
+
+Until step 1 is done, every collector write fails with `PERMISSION_DENIED` /
+`NOT_FOUND` (fail closed) rather than landing anywhere unexpected, and until
+step 2 is done the admin review UI (`/admin/ingest`) has nothing to read.
+
 ## Detective controls (recommended, independent of the role)
 
-The role cannot express "not the `alerts` collection", so detect it:
+The role no longer needs to express "not the `alerts` collection" once the
+condition pins it to `staging`, but detect any drift anyway:
 
 - Enable **Firestore Data Access audit logs** for the project and add a
   log-based alert on writes by
@@ -170,8 +241,15 @@ The role cannot express "not the `alerts` collection", so detect it:
 
 ## Residual risk
 
-With this role, a leaked collector credential (service-account key) can read the
-whole database and read/write documents in any collection of it, including
-`alerts`. It cannot delete, and it cannot perform database administration.
-Adopting Workload Identity Federation removes the long-lived key itself, and is
-the recommended long-term credential ([`SCHEDULING.md`](SCHEDULING.md)).
+Without the database condition, the role alone still lets a leaked collector
+credential read the **whole project** and read/write documents in any collection
+of **any** database, including `alerts` in `(default)`. It cannot delete, and it
+cannot perform database administration. The two mitigations are complementary:
+
+- the **database split** (option B) confines the collector's code and the
+  intended IAM scope to `staging`, and
+- the **IAM condition** above turns that intention into an enforced boundary.
+
+Apply both. Adopting Workload Identity Federation removes the long-lived
+service-account key itself, and is the recommended long-term credential
+([`SCHEDULING.md`](SCHEDULING.md)).

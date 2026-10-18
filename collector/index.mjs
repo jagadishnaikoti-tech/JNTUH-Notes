@@ -25,6 +25,7 @@ import {
   INTENDED_PROJECT_ID,
   RUN_STATUS,
   SOURCE_OUTCOME,
+  STAGING_DATABASE_ID,
 } from "./lib/runReport.mjs";
 
 /** Every adapter is registered here; adding a source is one import + one line. */
@@ -57,6 +58,12 @@ Write-mode options (guarded)
   --allow-production     Required for non-emulator writes.
   --emulator             Use Firestore emulator (requires FIRESTORE_EMULATOR_HOST).
   --max-items <number>   Cap newly created items per run (applied to write path).
+
+Staging target
+  Every write goes to the named Firestore database "${STAGING_DATABASE_ID}", never to
+  "(default)". The public alert collection lives in "(default)" and is out of
+  reach for this collector. The database id is not a flag: it is pinned, so a
+  caller cannot redirect staging into the public database (fail closed).
 
 Defaults
   Dry run (no writes) unless --write is given. Production writes require both
@@ -395,6 +402,7 @@ async function main() {
         collectorVersion,
         dryRun: false,
         projectId: config.project,
+        databaseId: store.databaseId,
         maxItems: config.maxItems,
       });
 
@@ -408,9 +416,9 @@ async function main() {
       await executeRun({ plan, store, now: () => new Date() });
       await store.close();
       if (config.json) {
-        process.stdout.write(`${JSON.stringify({ dryRun: false, mode: store.mode, runId, status: plan.status }, null, 2)}\n`);
+        process.stdout.write(`${JSON.stringify({ dryRun: false, mode: store.mode, projectId: store.projectId, databaseId: store.databaseId, runId, status: plan.status }, null, 2)}\n`);
       } else {
-        console.log(`collector: wrote run ${runId} (status=${plan.status}, ops=${plan.counts.operations}, batches=${plan.counts.batches})`);
+        console.log(`collector: wrote run ${runId} to ${store.projectId}/${store.databaseId} (status=${plan.status}, ops=${plan.counts.operations}, batches=${plan.counts.batches})`);
       }
       return;
     } catch (error) {

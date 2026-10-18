@@ -1,7 +1,11 @@
 rules_version = '2';
 
 // ===========================================================================
-// JNTUH Notes - Cloud Firestore security rules
+// JNTUH Notes - Cloud Firestore security rules for the `(default)` database
+//
+// This is the PUBLIC database: alerts, analyticsEvents, channels, settings and
+// users all live here. The collector's staging collections live in a separate
+// named database (`staging`) with its own ruleset, firestore.staging.rules.
 //
 // Threat model
 //   * Visitors are anonymous and may only CREATE validated analytics events.
@@ -146,69 +150,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---- ingestItems/{itemId} ---------------------------------------------
-    // JNTUH Alert Radar STAGING (Phase 2). These documents are written ONLY by
-    // the trusted collector through the Admin SDK, which bypasses these rules.
-    // A client may never create an item, because the collector owns the item's
-    // identity and every notice-derived field (title, URLs, hashes, source ids
-    // and the collector timestamps). The single client mutation permitted is an
-    // administrator moving a staged item through the review state machine.
-
-    // The only fields an administrator may change on a staged item. Everything
-    // else in the document is immutable from the client side.
-    function reviewUpdateFields() {
-      return ['reviewState', 'promotedAlertId', 'promotedAt', 'promotedBy'];
-    }
-
-    // Promotion metadata is all-or-nothing. A `promoted` item must carry a
-    // well-formed alert id, timestamp and actor. Any other state may *keep* a
-    // previous promotion's metadata as history, but every present field must
-    // still be correctly typed (no dumping a map or a number in `promotedAt`).
-    function validPromotion(d) {
-      return d.reviewState == 'promoted'
-        ? (d.keys().hasAll(['promotedAlertId', 'promotedAt', 'promotedBy'])
-            && isString(d.promotedAlertId, 200) && d.promotedAlertId.size() >= 1
-            && d.promotedAt is timestamp
-            && isString(d.promotedBy, 200) && d.promotedBy.size() >= 1)
-        : ((!d.keys().hasAny(['promotedAlertId']) || d.promotedAlertId == null
-              || (isString(d.promotedAlertId, 200) && d.promotedAlertId.size() >= 1))
-            && (!d.keys().hasAny(['promotedAt']) || d.promotedAt == null
-              || d.promotedAt is timestamp)
-            && (!d.keys().hasAny(['promotedBy']) || d.promotedBy == null
-              || (isString(d.promotedBy, 200) && d.promotedBy.size() >= 1)));
-    }
-
-    function validReviewUpdate(d, existing) {
-      return d.diff(existing).affectedKeys().hasOnly(reviewUpdateFields())
-        && d.keys().hasAll(['reviewState'])
-        && d.reviewState in ['new', 'promoted', 'ignored']
-        && validPromotion(d);
-    }
-
-    match /ingestItems/{itemId} {
-      allow read: if isAdmin();
-      allow create: if false;   // the collector is the only creator
-      allow update: if isAdmin() && validReviewUpdate(request.resource.data, resource.data);
-      allow delete: if false;
-    }
-
-    // ---- ingestRuns/{runId} -----------------------------------------------
-    // One audit document per collector run (status, counters, source summary).
-    // Written only by the collector; administrators may read the audit trail.
-
-    match /ingestRuns/{runId} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
-
-    // ---- ingestSourceHealth/{sourceId} ------------------------------------
-    // Rolling per-source health (consecutive failures, last notices, error).
-    // Written only by the collector; administrators may read it.
-
-    match /ingestSourceHealth/{sourceId} {
-      allow read: if isAdmin();
-      allow write: if false;
-    }
+    // ---- ingest* staging collections: NOT in this database -----------------
+    // The collector staging collections (ingestItems / ingestRuns /
+    // ingestSourceHealth) live in the separate named database `staging`, and
+    // their rules live in `firestore.staging.rules`. They are deliberately
+    // absent here, so this ruleset denies every client (including an
+    // administrator) access to those collection names in `(default)`. That is
+    // what makes a misconfigured client fail loudly instead of silently reading
+    // or writing staging data in the public database. See collector/SECURITY.md.
 
     // ---- settings/{docId} --------------------------------------------------
     // Public website settings. Only the `public` document is world-readable.

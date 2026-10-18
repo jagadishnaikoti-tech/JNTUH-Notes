@@ -1,8 +1,16 @@
 {
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  },
+  "firestore": [
+    {
+      "database": "(default)",
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
+    },
+    {
+      "database": "staging",
+      "rules": "firestore.staging.rules",
+      "indexes": "firestore.staging.indexes.json"
+    }
+  ],
   "emulators": {
     "firestore": {
       "port": 8080,

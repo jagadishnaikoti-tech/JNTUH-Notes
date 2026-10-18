@@ -223,23 +223,30 @@ test("the documentation never binds a predefined, primitive or admin role", () =
   assert.match(scheduling, /SECURITY\.md/, "SCHEDULING.md must link to SECURITY.md");
 });
 
-test("the documentation states the boundary honestly: risk reduced, collections not isolated", () => {
+test("the documentation states the boundary honestly: the role alone isolates no collections", () => {
   const security = read(SECURITY);
   // Markdown wraps prose, so compare on a whitespace-normalised copy.
   const prose = security.replace(/\s+/g, " ");
 
+  // The role is database-wide: on its own it cannot single out collections.
   assert.ok(
     prose.includes("does not isolate individual collections"),
-    "the docs must say the role does not isolate individual collections",
+    "the docs must say the role alone does not isolate individual collections",
   );
   assert.match(prose, /collection-level/, "the docs must explain that Firestore IAM has no collection-level role");
-  assert.match(prose, /alerts/, "the docs must say the alerts collection is still reachable by the credential");
+  assert.match(prose, /alerts/, "the docs must say the alerts collection is reachable by the credential");
   assert.match(prose, /database/i, "the docs must state the granularity that IAM does offer");
 
-  // No false claim of collection isolation.
-  const withoutTheDisavowal = prose.replace(/never as IAM isolation/gi, "");
+  // Option B adds a real collection-isolation boundary, but it belongs to the
+  // DATABASE split, never to the IAM role. No sentence may credit the role with
+  // isolating collections, and the database claim must be stated.
+  assert.match(
+    prose,
+    /separate database \*\*does\*\* isolate collections/,
+    "the docs must attribute the collection isolation to the separate database",
+  );
   assert.ok(
-    !/isolates?\s+(the\s+)?(three\s+)?(staging\s+)?collections\b/i.test(withoutTheDisavowal),
-    "the docs must not claim collection-level isolation",
+    !/\brole\b[^.]*isolate[sd]?\s+collections/i.test(prose),
+    "the docs must not credit the IAM role with isolating collections",
   );
 });

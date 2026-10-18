@@ -15,6 +15,8 @@
 //   * staging refuses any project id but INTENDED_PROJECT_ID, refuses to run
 //     while a Firestore emulator host is set, and refuses without Application
 //     Default Credentials;
+//   * staging is pinned to the named database "staging" and refuses any other
+//     COLLECTOR_DATABASE_ID, so the public "(default)" database is unreachable;
 //   * `--offline` (replay saved HTML) is dry-run only: a staging run must read
 //     the live official pages, never a stale fixture;
 //   * `--max-items` is always a positive, capped integer, so a scheduled run can
@@ -24,7 +26,7 @@
 //     rejected rather than passed through.
 // ---------------------------------------------------------------------------
 
-import { INTENDED_PROJECT_ID } from "./runReport.mjs";
+import { INTENDED_PROJECT_ID, STAGING_DATABASE_ID } from "./runReport.mjs";
 
 /** The only two modes a scheduled run may use. */
 export const RUN_MODE = Object.freeze({
@@ -140,6 +142,7 @@ export function resolveRunPlan(input = {}) {
     mode,
     stagingEnabled,
     projectId,
+    databaseId,
     credentialPath,
     emulatorHost,
     maxItems,
@@ -218,6 +221,17 @@ export function resolveRunPlan(input = {}) {
     return refuse(`${credentials.reason} - a staging run needs Application Default Credentials`);
   }
 
+  // The database id is pinned, not configurable. If a runner sets
+  // COLLECTOR_DATABASE_ID at all it must already agree with the pinned staging
+  // database, otherwise the environment is misconfigured and we fail closed
+  // rather than let a caller redirect staging into `(default)`.
+  const database = String(databaseId ?? "").trim();
+  if (database && database !== STAGING_DATABASE_ID) {
+    return refuse(
+      `refusing to stage into database "${database}" (the collector is pinned to "${STAGING_DATABASE_ID}"; staging never touches "(default)")`,
+    );
+  }
+
   const budget = nonNegativeInt(maxItems, "max items", {
     fallback: DEFAULT_MAX_ITEMS,
     cap: MAX_ITEMS_CAP,
@@ -242,8 +256,9 @@ export function resolveRunPlan(input = {}) {
     writes: true,
     argv,
     projectId: INTENDED_PROJECT_ID,
+    databaseId: STAGING_DATABASE_ID,
     maxItems: budget.value,
-    summary: `staging to ${INTENDED_PROJECT_ID} (at most ${budget.value} new notices) - staging never publishes`,
+    summary: `staging to ${INTENDED_PROJECT_ID}/${STAGING_DATABASE_ID} (at most ${budget.value} new notices) - staging never publishes`,
   };
 }
 
@@ -256,6 +271,7 @@ export function resolveRunPlanFromEnv(env = {}) {
     mode: env.COLLECTOR_MODE,
     stagingEnabled: env.COLLECTOR_STAGING_ENABLED,
     projectId: env.COLLECTOR_PROJECT_ID,
+    databaseId: env.COLLECTOR_DATABASE_ID,
     credentialPath: env.GOOGLE_APPLICATION_CREDENTIALS,
     emulatorHost: env.FIRESTORE_EMULATOR_HOST,
     maxItems: env.COLLECTOR_MAX_ITEMS,

@@ -108,17 +108,23 @@ zero notices is treated as a markup change and reported as an error.
 ## Write mode (staging)
 
 With `--write` the collector stages what it found in Firestore instead of just
-printing it. It writes **only** to admin-only staging collections:
+printing it. It writes **only** to admin-only staging collections, and only in the
+separate **`staging`** database:
 
-| Collection | One document per | Written by |
-| ---------- | ---------------- | ---------- |
-| `ingestItems` | staged notice (no `status`, no alert fields) | collector |
-| `ingestRuns` | collector run ("what happened?") | collector |
-| `ingestSourceHealth` | official source (last attempt / last success) | collector |
+| Collection | One document per | Written by | Database |
+| ---------- | ---------------- | ---------- | -------- |
+| `ingestItems` | staged notice (no `status`, no alert fields) | collector | `staging` |
+| `ingestRuns` | collector run ("what happened?") | collector | `staging` |
+| `ingestSourceHealth` | official source (last attempt / last success) | collector | `staging` |
 
-Write mode never touches the public `alerts` collection, and every staged notice
-is a plain record awaiting review — the collector can produce neither a verified
-nor a published alert.
+Write mode never touches the public `alerts` collection (it is in `(default)`,
+untouched and unreachable), and every staged notice is a plain record awaiting
+review — the collector can produce neither a verified nor a published alert. The
+database id is pinned in code (`STAGING_DATABASE_ID`, `resolveDatabaseId()`); there
+is no flag or environment variable to redirect it, and a wrong value refuses the
+run instead of falling back to `(default)`. See
+[`SECURITY.md`](SECURITY.md) for why the split exists and how the IAM condition
+turns it into an enforced boundary.
 
 ### Write-mode options
 
@@ -138,7 +144,8 @@ nor a published alert.
   (`GOOGLE_APPLICATION_CREDENTIALS`, or an attached/Workload Identity service
   account). No key is stored in the repository, and the collector keeps no
   secrets in code.
-- The store's allowlist accepts only the three staging collection names above.
+- The store's allowlist accepts only the three staging collection names above, and
+  `resolveDatabaseId()` accepts only the `staging` database.
 
 ```bash
 # Stage into the local emulator (safe, no production data)
@@ -153,12 +160,17 @@ node collector/index.mjs --write --allow-production --project jntuh-notes-6ef74
 
 Staging and review are two distinct systems:
 
-- the **collector** writes raw staged notices into `ingestItems`;
+- the **collector** writes raw staged notices into `ingestItems` (in the `staging`
+  database);
 - the **admin review workflow** is the web app page at `/admin/ingest`
   (`src/lib/ingest.js` + `src/pages/admin/AdminIngest.jsx`). There an
   administrator filters the queue by review state and source, opens the original
   source URL, ignores a notice, returns an ignored notice to review, or promotes
-  a reviewed notice into a private alert **draft** in one transaction.
+  a reviewed notice into a private alert **draft** in `(default)`. Firestore has
+  no cross-database transaction, so a promotion creates the draft first (with a
+  deterministic id, never overwriting an existing one) and then claims the staged
+  notice in `staging`; both steps are retry-safe, so a notice can never yield two
+  alerts and an interrupted promotion heals on the next attempt.
 
 Neither half can publish: promotion creates a draft, and verification/publishing
 stay a manual administrator action on the Alert Radar page.
@@ -360,7 +372,7 @@ So the collector produces drafts, an administrator reviews them in
 **no extra field may ever be added to an alert document.** Everything the
 collector records beyond the alert schema — canonical URL, document URL,
 attachments, content hash, review metadata — lives in its own staging
-collections instead:
+collections instead, in a **separate Firestore database** (`staging`):
 
 - `ingestItems` — one document per staged notice, plus the review fields an
   administrator may change (`reviewState`, `promotedAlertId`, `promotedAt`,
@@ -368,15 +380,18 @@ collections instead:
 - `ingestRuns` — one document per collector run (counts, status, warnings);
 - `ingestSourceHealth` — one document per official source.
 
-All three are admin-only in `firestore.rules`: only administrators may read
+All three are governed by `firestore.staging.rules`: only administrators may read
 them, the collector writes them through the Admin SDK, and a browser may change
-only the four review fields on `ingestItems`. The public `alerts` collection is
-never written by the collector.
+only the four review fields on `ingestItems`. The public `alerts` collection
+lives in `(default)`, is never written by the collector, and is not even
+reachable from the `staging` database.
 
-That last sentence is a **code-level** guarantee, not an IAM one: Firestore IAM is
-database-granular, so the collector's credential cannot be scoped to those three
-collections. The guardrail is `assertCollection()` plus a least-privilege custom
-role that removes document deletion and all database administration — see
+The database boundary is what makes that a **hard** guarantee rather than a code
+convention: the collector's code is pinned to `staging`
+(`STAGING_DATABASE_ID` / `resolveDatabaseId()`), `firebase.json` deploys each
+ruleset to its own database, and an IAM condition on
+`projects/jntuh-notes-6ef74/databases/staging` confines the credential itself.
+`assertCollection()` and `resolveDatabaseId()` remain as defence in depth — see
 [SECURITY.md](SECURITY.md).
 
 ---
@@ -393,12 +408,14 @@ scheduler adds no second collection pipeline and no new write path.
 - The only trigger is a manual dispatch; the `schedule:` block ships commented out.
 - A staging run additionally requires the owner-set repository variable
   `COLLECTOR_STAGING_ENABLED=true`, and is refused if the project is not
-  `jntuh-notes-6ef74`, if a Firestore emulator host is set, if there are no
-  Application Default Credentials, if `--offline` fixtures are requested, or if
-  `--max-items` is missing, zero or over the cap.
+  `jntuh-notes-6ef74`, if `COLLECTOR_DATABASE_ID` is anything but `staging`, if a
+  Firestore emulator host is set, if there are no Application Default
+  Credentials, if `--offline` fixtures are requested, or if `--max-items` is
+  missing, zero or over the cap.
 - A staging run authenticates with a dedicated service account whose only role is
-  the least-privilege custom role `jntuhCollectorStaging`; see
-  [SECURITY.md](SECURITY.md) for what that role does and does not enforce.
+  the least-privilege custom role `jntuhCollectorStaging`, scoped by an IAM
+  condition to the `staging` database; see [SECURITY.md](SECURITY.md) for what
+  that role does and does not enforce.
 - Chosen runner, why not Cloud Functions, credentials, failure handling, and how
   to enable or disable it: [SCHEDULING.md](SCHEDULING.md).
 

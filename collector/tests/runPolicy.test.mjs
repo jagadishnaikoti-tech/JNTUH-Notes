@@ -22,6 +22,7 @@ import {
   resolveRunPlanFromEnv,
 } from "../lib/runPolicy.mjs";
 import { explainUnexpectedArguments, runScheduled } from "../scheduledRun.mjs";
+import { STAGING_DATABASE_ID } from "../lib/runReport.mjs";
 
 const PROJECT = "jntuh-notes-6ef74";
 
@@ -240,6 +241,7 @@ test("resolveRunPlanFromEnv maps the documented environment keys", () => {
     COLLECTOR_MODE: "stage",
     COLLECTOR_STAGING_ENABLED: "true",
     COLLECTOR_PROJECT_ID: PROJECT,
+    COLLECTOR_DATABASE_ID: "staging",
     COLLECTOR_MAX_ITEMS: "7",
     COLLECTOR_OFFLINE_DIR: "fixtures",
     COLLECTOR_SOURCES: "notifications,exams",
@@ -253,6 +255,7 @@ test("resolveRunPlanFromEnv maps the documented environment keys", () => {
     mode: "stage",
     stagingEnabled: "true",
     projectId: PROJECT,
+    databaseId: "staging",
     credentialPath: "/tmp/sa.json",
     emulatorHost: "",
     maxItems: "7",
@@ -279,6 +282,35 @@ test("an empty environment schedules a dry run, not a write", () => {
   assert.equal(plan.ok, true);
   assert.equal(plan.writes, false);
   assert.deepEqual(plan.argv, []);
+});
+
+test("a staging run is pinned to the staging database, never (default)", () => {
+  const plan = resolveRunPlan(approvedStage);
+  assert.equal(plan.ok, true);
+  assert.equal(plan.databaseId, STAGING_DATABASE_ID);
+  assert.equal(STAGING_DATABASE_ID, "staging");
+  assert.match(plan.summary, /jntuh-notes-6ef74\/staging/);
+  // The pinned database is not a flag, so a caller can never redirect it.
+  assert.ok(!plan.argv.some((token) => String(token).includes("(default)")));
+  assert.ok(!plan.argv.includes("--database"));
+  assert.equal(ALLOWED_FLAGS.includes("--database"), false);
+});
+
+test("a runner that names any other database is refused (fail closed)", () => {
+  for (const databaseId of ["(default)", "default", "prod", "alerts"]) {
+    const plan = resolveRunPlan({ ...approvedStage, databaseId });
+    assert.equal(plan.ok, false, `expected database "${databaseId}" to be refused`);
+    assert.match(plan.reason, /database/);
+    assert.deepEqual(plan.argv, []);
+  }
+});
+
+test("an unset COLLECTOR_DATABASE_ID keeps the pinned staging database", () => {
+  for (const databaseId of [undefined, null, "", "  ", "staging"]) {
+    const plan = resolveRunPlan({ ...approvedStage, databaseId });
+    assert.equal(plan.ok, true);
+    assert.equal(plan.databaseId, STAGING_DATABASE_ID);
+  }
 });
 
 // --- the runner entry point -------------------------------------------------

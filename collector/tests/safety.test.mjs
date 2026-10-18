@@ -303,3 +303,38 @@ test("the public site bundle never depends on the Firebase Admin SDK", () => {
   walk(path.join(ROOT, "src"));
   assert.deepEqual(offenders, [], "the frontend must never hold backend credentials");
 });
+
+// ---------------------------------------------------------------------------
+// Option B: separate Firestore database for collector staging.
+//
+// The collector's credential now has a *database-level* boundary: staging data
+// lives in the named `staging` database and the public data in `(default)`. These
+// invariants keep the database id pinned in code so no environment variable or
+// caller can quietly redirect a staging write into the public database.
+// ---------------------------------------------------------------------------
+
+test("the staging database is pinned in code, never chosen by the environment", () => {
+  const store = readFileSync(path.join(COLLECTOR_DIR, ADMIN_MODULE), "utf8");
+  assert.match(store, /databaseId = STAGING_DATABASE_ID/, "the store defaults to staging");
+  assert.ok(
+    !/COLLECTOR_DATABASE_ID/.test(store),
+    "firestoreAdmin.mjs must not read the database from an environment variable",
+  );
+});
+
+test("the collector threads its database id into the run document", () => {
+  const cli = readFileSync(path.join(COLLECTOR_DIR, "index.mjs"), "utf8");
+  assert.match(cli, /createIngestStore\(/, "the CLI builds the store");
+  assert.match(cli, /databaseId: store\.databaseId/, "the CLI records the database it wrote to");
+
+  const write = readFileSync(path.join(COLLECTOR_DIR, "write.mjs"), "utf8");
+  assert.match(write, /databaseId = ""/);
+  assert.match(write, /buildRunDocument\(\{[\s\S]*?databaseId/, "the run document carries the database id");
+});
+
+test("the policy refuses any database but staging", () => {
+  const policy = readFileSync(path.join(COLLECTOR_DIR, "lib", "runPolicy.mjs"), "utf8");
+  assert.match(policy, /database !== STAGING_DATABASE_ID/);
+  assert.match(policy, /databaseId: STAGING_DATABASE_ID/);
+  assert.ok(!/--database/.test(policy), "the database is not a CLI flag");
+});
