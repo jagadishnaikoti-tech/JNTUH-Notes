@@ -27,6 +27,13 @@ public `alerts` collection, and `firestore.rules` requires an admin-only
 `verifiedAt` / `verifiedBy` pair before any alert may be `published`. Publishing
 remains a manual administrator action in the web app.
 
+The three-collection restriction is enforced by the collector's own
+`assertCollection()` allowlist, **not by IAM**: the credential's role is
+database-wide, because Firestore offers no collection-level IAM. The role still
+takes document deletion and all database administration away from the credential.
+[`SECURITY.md`](SECURITY.md) states exactly what that boundary is, what it is not,
+and how to verify the grant.
+
 ---
 
 ## The chosen runner: GitHub Actions
@@ -70,15 +77,26 @@ staged until the timer is back; nothing is published either way. The manual
 ## Authentication
 
 The collector writes Firestore through the **Admin SDK**, which bypasses
-`firestore.rules`; **IAM is the real boundary** for a scheduled run. Two options
-are supported; both keep the credential out of the repository.
+`firestore.rules`; **IAM is the real boundary** for a scheduled run — and it is a
+*database-wide* boundary, because Firestore IAM cannot be scoped to a collection.
+The custom role below therefore reduces what a compromised credential could do
+without isolating the three staging collections; [`SECURITY.md`](SECURITY.md)
+states that boundary in full. Two credential options are supported; both keep the
+credential out of the repository.
 
 ### Option A — service-account secret (implemented)
 
 1. Create a dedicated service account in the Firebase/GCP project, e.g.
    `collector-runner@jntuh-notes-6ef74.iam.gserviceaccount.com`.
-2. Grant it **exactly one** role: `roles/datastore.user` (Firestore read/write).
-   Do **not** grant `roles/owner`, `roles/editor` or `firebase.admin`.
+2. Grant it **exactly one** role: the project-level custom role
+   `projects/jntuh-notes-6ef74/roles/jntuhCollectorStaging`, defined in
+   [`iam/collector-staging-role.json`](iam/collector-staging-role.json). It allows
+   only `datastore.entities.get`, `datastore.entities.create` and
+   `datastore.entities.update` — exactly the collector's operation surface. Do
+   **not** grant `roles/owner`, `roles/editor`, `roles/datastore.user` or
+   `firebase.admin`: they are broader and include document deletion and database
+   administration. [`SECURITY.md`](SECURITY.md) has the create, bind and verify
+   commands.
 3. Add its JSON key as the repository secret `FIREBASE_SERVICE_ACCOUNT`.
 4. The workflow writes that secret to `$RUNNER_TEMP/collector-service-account.json`
    (mode `0600`) and points `GOOGLE_APPLICATION_CREDENTIALS` at it. The key never
@@ -93,7 +111,8 @@ No long-lived key at all: GitHub's OIDC token is exchanged for a short-lived
 access token.
 
 1. In GCP, create a workload identity pool + provider trusting this repository,
-   and a service account with `roles/datastore.user`.
+   and a service account with the same custom role
+   (`projects/jntuh-notes-6ef74/roles/jntuhCollectorStaging`).
 2. Allow the repository to impersonate it.
 3. Replace the "Write the service-account credential…" step with
    `google-github-actions/auth@v2`, and keep `permissions: id-token: write`
@@ -171,8 +190,9 @@ it should be done until the rollout is explicitly approved.
    npm run build && npm run test:unit && npm run test:collector && npm run test:rules
    ```
 
-2. Create the service account and grant `roles/datastore.user` (Option A above),
-   then add the `FIREBASE_SERVICE_ACCOUNT` repository secret.
+2. Create the service account and grant the custom role `jntuhCollectorStaging`
+   (Option A above, see [`SECURITY.md`](SECURITY.md)), then add the
+   `FIREBASE_SERVICE_ACCOUNT` repository secret.
 3. Set the repository variable `COLLECTOR_STAGING_ENABLED=true`.
 4. Run the workflow once manually with `mode: dry-run` and read the log — it
    contacts the live official pages, parses them and writes nothing.

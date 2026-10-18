@@ -91,7 +91,8 @@ test("the scheduling documentation covers the required operational facts", () =>
     "GitHub Actions",        // chosen runner
     "Blaze",                 // why not Cloud Functions
     "cron",                  // the schedule
-    "roles/datastore.user",  // least-privilege IAM
+    "jntuhCollectorStaging", // the least-privilege custom role
+    "SECURITY.md",           // the honest description of the IAM boundary
     "Workload Identity",     // the keyless option
     "COLLECTOR_STAGING_ENABLED", // the second gate
     "consecutiveFailures",   // failure handling

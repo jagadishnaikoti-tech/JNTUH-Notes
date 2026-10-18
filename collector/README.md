@@ -373,6 +373,12 @@ them, the collector writes them through the Admin SDK, and a browser may change
 only the four review fields on `ingestItems`. The public `alerts` collection is
 never written by the collector.
 
+That last sentence is a **code-level** guarantee, not an IAM one: Firestore IAM is
+database-granular, so the collector's credential cannot be scoped to those three
+collections. The guardrail is `assertCollection()` plus a least-privilege custom
+role that removes document deletion and all database administration — see
+[SECURITY.md](SECURITY.md).
+
 ---
 
 ## Scheduling
@@ -390,6 +396,9 @@ scheduler adds no second collection pipeline and no new write path.
   `jntuh-notes-6ef74`, if a Firestore emulator host is set, if there are no
   Application Default Credentials, if `--offline` fixtures are requested, or if
   `--max-items` is missing, zero or over the cap.
+- A staging run authenticates with a dedicated service account whose only role is
+  the least-privilege custom role `jntuhCollectorStaging`; see
+  [SECURITY.md](SECURITY.md) for what that role does and does not enforce.
 - Chosen runner, why not Cloud Functions, credentials, failure handling, and how
   to enable or disable it: [SCHEDULING.md](SCHEDULING.md).
 

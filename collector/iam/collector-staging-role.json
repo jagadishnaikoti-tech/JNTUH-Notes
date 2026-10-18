@@ -1,0 +1,10 @@
+{
+  "title": "JNTUH alert collector - staging writer",
+  "description": "Least-privilege Firestore data role for the JNTUH alert collector service account (collector-runner@jntuh-notes-6ef74.iam.gserviceaccount.com). It may read documents by id and create/update documents, which is exactly what the collector's staging write path does (db.getAll + batch.set with merge). It deliberately grants no datastore.entities.delete, no datastore.databases.*, no datastore.schemas.*, no datastore.operations.*, no import/export/bulk/backup/restore permission and no resourcemanager.projects.* permission. WARNING: Firestore IAM is database-granular, never collection-granular, so this role is scoped to the whole database; the three staging collections are enforced by the collector's own allowlist, not by this role. See collector/SECURITY.md.",
+  "stage": "GA",
+  "includedPermissions": [
+    "datastore.entities.get",
+    "datastore.entities.create",
+    "datastore.entities.update"
+  ]
+}
