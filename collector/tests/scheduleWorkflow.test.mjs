@@ -10,7 +10,7 @@
 //
 // The parsing is deliberately line-based. The repository has no YAML dependency
 // and this check only needs to spot a small set of things; comments are stripped
-// first so the documented "uncomment this to enable" instructions do not trip it.
+// first so the reviewed-but-disabled schedule block does not trip it.
 // ---------------------------------------------------------------------------
 
 import { strict as assert } from "node:assert";
@@ -31,20 +31,35 @@ const live = raw
   .filter((line) => !/^\s*#/.test(line))
   .join("\n");
 
-test("the workflow exists and is triggered only by a manual dispatch", () => {
+test("the workflow is triggered only by a manual dispatch, never by a timer", () => {
   assert.match(live, /^\s*workflow_dispatch:/m);
   assert.match(live, /^\s*on:/m);
   // Nothing may run on a push, a pull request or a timer.
   assert.ok(!/^\s{0,4}push:/m.test(live), "must not run on push");
   assert.ok(!/^\s{0,4}pull_request:/m.test(live), "must not run on pull_request");
   assert.ok(!/^\s{0,4}schedule:/m.test(live), "the timer must stay disabled until approved");
-  // The documented enable path must still be present, commented out.
+  assert.ok(!/^\s*-\s*cron:/m.test(live), "no live cron entry may remain");
+  assert.ok(
+    !/github\.event_name == 'schedule'/.test(live),
+    "no live condition may treat a scheduled run as a staging run",
+  );
+  // The reviewed cron is kept as a record, but only as a comment.
   assert.match(raw, /^\s*#\s*schedule:/m, "the commented-out schedule block must be kept");
   assert.match(raw, /^\s*#\s*-\s*cron:/m, "the proposed cron expression must be kept");
+  // A manual run defaults to the read-only mode, not to a write.
+  assert.match(raw, /default:\s*dry-run/, "the default mode must be dry-run");
 });
 
 test("the workflow never carries credential material and uses OIDC, not a stored secret", () => {
-  for (const forbidden of [/-----BEGIN/, /private_key/, /firebase-adminsdk/, /client_email/, /"type"\s*:\s*"service_account"/]) {
+  for (const forbidden of [
+    /-----BEGIN/,
+    /private_key/,
+    /firebase-adminsdk/,
+    /client_email/,
+    /"type"\s*:\s*"service_account"/,
+    /credentials_json/,
+    /service-accounts\s+keys\s+create/,
+  ]) {
     assert.ok(!forbidden.test(raw), `the workflow must not contain ${forbidden}`);
   }
   // No long-lived service-account JSON: the job exchanges a short-lived GitHub
@@ -55,8 +70,29 @@ test("the workflow never carries credential material and uses OIDC, not a stored
   );
   assert.ok(!/FIREBASE_SERVICE_ACCOUNT/.test(raw));
   assert.match(live, /google-github-actions\/auth@v2/);
-  assert.match(live, /vars\.GCP_WORKLOAD_IDENTITY_PROVIDER/);
-  assert.match(live, /vars\.GCP_COLLECTOR_SERVICE_ACCOUNT/);
+  assert.match(live, /workload_identity_provider:\s*\$\{\{\s*vars\.GCP_WORKLOAD_IDENTITY_PROVIDER\s*\}\}/);
+  assert.match(live, /service_account:\s*\$\{\{\s*vars\.GCP_COLLECTOR_SERVICE_ACCOUNT\s*\}\}/);
+  assert.ok(
+    !/(?:echo|printf|cat)[^\n]*(?:GOOGLE_APPLICATION_CREDENTIALS|ACCESS_TOKEN|ID_TOKEN|GITHUB_TOKEN)/i.test(live),
+    "the workflow must not print credentials or tokens",
+  );
+});
+
+test("the workflow names the exact staging service account and no other identity", () => {
+  const expected = "jntuh-staging-collector@jntuh-notes-staging.iam.gserviceaccount.com";
+  assert.ok(live.includes(expected), "the workflow must name the actual staging service account");
+  for (const line of live.split("\n").filter((line) => line.includes("@jntuh-notes-staging.iam.gserviceaccount.com"))) {
+    assert.ok(line.includes(expected), `unexpected staging service account: ${line.trim()}`);
+  }
+  const stagingAccounts = raw.match(/[A-Za-z0-9._-]+@jntuh-notes-staging\.iam\.gserviceaccount\.com/g) ?? [];
+  assert.ok(stagingAccounts.length > 0, "the workflow must configure a staging service account");
+  for (const account of stagingAccounts) {
+    assert.equal(account, expected, `unexpected staging service account: ${account}`);
+  }
+  assert.ok(
+    !/@jntuh-notes-6ef74\.iam\.gserviceaccount\.com/.test(raw),
+    "production service accounts must never be configured",
+  );
 });
 
 test("permissions are least privilege", () => {
@@ -68,10 +104,35 @@ test("permissions are least privilege", () => {
   assert.match(live, /id-token:\s*write/);
 });
 
-test("staging is double-gated: repository variable, then the policy", () => {
+test("a staging write requires a manual stage dispatch and the owner-set variable", () => {
   assert.match(live, /vars\.COLLECTOR_STAGING_ENABLED/);
   assert.match(raw, /COLLECTOR_STAGING_ENABLED=true/, "the guard must explain how staging is enabled");
-  assert.match(live, /if:\s*\$\{\{[^}]*inputs\.mode == 'stage'[^}]*\}\}/);
+
+  const modeLine = live.split("\n").find((line) => line.includes("COLLECTOR_MODE:"));
+  assert.ok(modeLine, "the collector mode must be set explicitly");
+  assert.ok(modeLine.includes("github.event_name == 'workflow_dispatch'"), "staging must be manual only");
+  assert.ok(modeLine.includes("inputs.mode == 'stage'"), "staging must select the stage input");
+  assert.ok(
+    modeLine.includes("vars.COLLECTOR_STAGING_ENABLED == 'true'"),
+    "staging must also require the owner-set repository variable",
+  );
+  assert.ok(modeLine.includes("'dry-run'"), "every other case must fall back to dry-run");
+
+  const stageConditions = live
+    .split("\n")
+    .filter((line) => /if:.*inputs\.mode == 'stage'/.test(line));
+  assert.ok(stageConditions.length >= 3, "the write guards and WIF auth must be stage-only");
+  for (const condition of stageConditions) {
+    assert.ok(condition.includes("github.event_name == 'workflow_dispatch'"), condition.trim());
+    assert.ok(!condition.includes("schedule"), condition.trim());
+  }
+
+  const guardIndex = live.indexOf("Guard - staging requires the owner-set repository variable");
+  const authIndex = live.indexOf("uses: google-github-actions/auth@v2");
+  const runIndex = live.indexOf("run: node collector/scheduledRun.mjs");
+  assert.ok(guardIndex !== -1 && authIndex !== -1 && runIndex !== -1);
+  assert.ok(guardIndex < authIndex, "the staging guard must run before authentication");
+  assert.ok(authIndex < runIndex, "WIF authentication must run before the collector");
 });
 
 test("the runner is invoked through the policy entry point, never with inline flags", () => {
@@ -96,9 +157,17 @@ test("the run step passes the run metadata the run document records", () => {
     !/COLLECTOR_PROJECT_ID:\s*jntuh-notes-6ef74/.test(live),
     "the workflow must never point the collector at production",
   );
+  assert.ok(
+    !/jntuh-notes-6ef74/.test(live),
+    "no live workflow line may target or name the production project",
+  );
   // The staging project's primary database is named explicitly. It is an
   // assertion, not a setting: runPolicy refuses any value but "(default)".
   assert.match(live, /COLLECTOR_DATABASE_ID:\s*"\(default\)"/);
+  // The max-items input remains capped by the workflow input and the policy.
+  assert.match(live, /max_items:/);
+  assert.match(live, /COLLECTOR_MAX_ITEMS:\s*\$\{\{\s*inputs\.max_items\s*\}\}/);
+  assert.match(raw, /default:\s*"100"/);
 });
 
 test("the scheduling documentation covers the required operational facts", () => {
