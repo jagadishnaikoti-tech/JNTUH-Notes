@@ -43,11 +43,20 @@ test("the workflow exists and is triggered only by a manual dispatch", () => {
   assert.match(raw, /^\s*#\s*-\s*cron:/m, "the proposed cron expression must be kept");
 });
 
-test("the workflow never carries credential material and only references secrets by name", () => {
+test("the workflow never carries credential material and uses OIDC, not a stored secret", () => {
   for (const forbidden of [/-----BEGIN/, /private_key/, /firebase-adminsdk/, /client_email/, /"type"\s*:\s*"service_account"/]) {
     assert.ok(!forbidden.test(raw), `the workflow must not contain ${forbidden}`);
   }
-  assert.match(live, /\$\{\{\s*secrets\.FIREBASE_SERVICE_ACCOUNT\s*\}\}/);
+  // No long-lived service-account JSON: the job exchanges a short-lived GitHub
+  // OIDC token for impersonated staging credentials.
+  assert.ok(
+    !/secrets\./.test(live),
+    "the workflow must not read repository secrets (WIF needs none)",
+  );
+  assert.ok(!/FIREBASE_SERVICE_ACCOUNT/.test(raw));
+  assert.match(live, /google-github-actions\/auth@v2/);
+  assert.match(live, /vars\.GCP_WORKLOAD_IDENTITY_PROVIDER/);
+  assert.match(live, /vars\.GCP_COLLECTOR_SERVICE_ACCOUNT/);
 });
 
 test("permissions are least privilege", () => {
@@ -67,7 +76,7 @@ test("staging is double-gated: repository variable, then the policy", () => {
 
 test("the runner is invoked through the policy entry point, never with inline flags", () => {
   assert.match(live, /run:\s*node collector\/scheduledRun\.mjs/);
-  assert.ok(!/--allow-production/.test(live), "production write flags belong in runPolicy.mjs, not the workflow");
+  assert.ok(!/--allow-production/.test(live), "live-write flags belong in runPolicy.mjs, not the workflow");
   assert.ok(!/--emulator/.test(live), "the scheduled workflow never targets an emulator");
 });
 
@@ -80,15 +89,16 @@ test("two runs can never overlap", () => {
 test("the run step passes the run metadata the run document records", () => {
   assert.match(live, /GITHUB_SHA:\s*\$\{\{\s*github\.sha\s*\}\}/);
   assert.match(live, /GITHUB_ACTOR:\s*\$\{\{\s*github\.actor\s*\}\}/);
-  // The project id is hard-coded so the policy's allowlist check is meaningful.
-  assert.match(live, /COLLECTOR_PROJECT_ID:\s*jntuh-notes-6ef74/);
-  // The staging database is named explicitly. It is an assertion, not a
-  // setting: runPolicy refuses any value but "staging".
-  assert.match(live, /COLLECTOR_DATABASE_ID:\s*staging/);
+  // The staging project is hard-coded so the policy's allowlist check is
+  // meaningful, and production is never a write target.
+  assert.match(live, /COLLECTOR_PROJECT_ID:\s*jntuh-notes-staging/);
   assert.ok(
-    !/COLLECTOR_DATABASE_ID:\s*["']?\(default\)/.test(live),
-    "the workflow must never name the public database",
+    !/COLLECTOR_PROJECT_ID:\s*jntuh-notes-6ef74/.test(live),
+    "the workflow must never point the collector at production",
   );
+  // The staging project's primary database is named explicitly. It is an
+  // assertion, not a setting: runPolicy refuses any value but "(default)".
+  assert.match(live, /COLLECTOR_DATABASE_ID:\s*"\(default\)"/);
 });
 
 test("the scheduling documentation covers the required operational facts", () => {
@@ -101,6 +111,9 @@ test("the scheduling documentation covers the required operational facts", () =>
     "jntuhCollectorStaging", // the least-privilege custom role
     "SECURITY.md",           // the honest description of the IAM boundary
     "Workload Identity",     // the keyless option
+    "GCP_WORKLOAD_IDENTITY_PROVIDER", // the GitHub repository variable
+    "GCP_COLLECTOR_SERVICE_ACCOUNT",  // the staging service account
+    "jntuh-notes-staging",   // the staging project
     "COLLECTOR_STAGING_ENABLED", // the second gate
     "consecutiveFailures",   // failure handling
     "Disabling it",          // how to turn it off

@@ -23,6 +23,7 @@ import {
   INGEST_COLLECTIONS,
   REVIEW_FILTER_ALL,
   STAGING_DATABASE_ID,
+  STAGING_PROJECT_ID,
   countIngestStates,
   fetchIngestItems,
   fetchIngestRuns,
@@ -31,7 +32,6 @@ import {
   hasContentChange,
   ignoreIngestItem,
   ingestSourceOptions,
-  isStagingDatabase,
   normaliseIngestRun,
   normaliseSourceHealth,
   promoteIngestItem,
@@ -56,8 +56,9 @@ function makeFake(options = {}) {
   };
   const log = { sets: [], updates: [], transactions: 0, queries: [], txnDbs: [] };
   const db = { permissionDenied: Boolean(options.permissionDenied) };
-  // A distinct handle standing in for the public `(default)` database, so tests
-  // can prove the alert draft is written there while the item lives in staging.
+  // A distinct handle standing in for the production `(default)` database, so tests
+  // can prove the alert draft is written there while the item lives in the
+  // staging project.
   const alertsDb = { kind: "alerts-db", permissionDenied: Boolean(options.permissionDenied) };
   // Simulates a Firestore write/commit failure in both `updateDoc` and
   // `runTransaction` (the transaction rejects before applying any staged write).
@@ -77,7 +78,7 @@ function makeFake(options = {}) {
 
   const sdk = {
     serverTimestamp: () => ({ __ts: true }),
-    getFirestore: () => db,
+    getFirestore: (arg) => arg || db,
 
     collection: (_db, path) => ({ kind: "collection", path }),
     doc: (a, b, c) => {
@@ -535,12 +536,12 @@ describe("promotion into an alert draft", () => {
     );
 
     assert.equal(result.created, true);
-    // Two steps, two databases: the draft is created in the alerts database,
-    // then the staged item is claimed in the staging database. There is no
-    // cross-database transaction, so these are necessarily two commits.
+    // Two steps, two projects: the draft is created in the production alerts
+    // database, then the staged item is claimed in the staging project. There is
+    // no cross-project transaction, so these are necessarily two commits.
     assert.equal(log.transactions, 2);
-    assert.equal(log.txnDbs[0], context.alertsDb, "the draft is written to the alerts DB");
-    assert.equal(log.txnDbs[1], context.db, "the item is claimed in the staging DB");
+    assert.equal(log.txnDbs[0], context.alertsDb, "the draft is written to the production alerts DB");
+    assert.equal(log.txnDbs[1], context.db, "the item is claimed in the staging project");
 
     // Both writes happened inside a transaction.
     assert.equal(log.sets.length, 1);
@@ -680,11 +681,9 @@ describe("promotion into an alert draft", () => {
     assert.deepEqual(Object.keys(stores.alerts), [expected]);
   });
 
-  it("pins staging to its own database and rejects the default database", () => {
-    assert.equal(STAGING_DATABASE_ID, "staging");
-    assert.equal(isStagingDatabase("staging"), true);
-    assert.equal(isStagingDatabase("(default)"), false);
-    assert.equal(isStagingDatabase(""), false);
+  it("pins staging to its own project and primary database", () => {
+    assert.equal(STAGING_PROJECT_ID, "jntuh-notes-staging");
+    assert.equal(STAGING_DATABASE_ID, "(default)");
     assert.throws(() => promotionAlertId(""), /id is required/i);
     // A path separator can never leak into a document id.
     assert.equal(promotionAlertId("a/b"), "ingest-a_b");

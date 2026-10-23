@@ -1,23 +1,24 @@
 // ---------------------------------------------------------------------------
-// Automatic collection into the STAGING DATABASE: new notice, duplicate re-run,
+// Automatic collection into the STAGING PROJECT: new notice, duplicate re-run,
 // and an unavailable source - against the REAL Firestore emulator, the REAL
-// firestore.staging.rules, and the REAL two-database layout.
+// firestore.staging.rules, and the REAL two-project layout.
 //
 // This is the scheduling phase's local proof (validation items 1-3):
 //
-//   1. a new notice is collected into `ingestItems` in the `staging` database;
+//   1. a new notice is collected into `ingestItems` in the `jntuh-notes-staging`
+//      project's `(default)` database;
 //   2. running again with the same notice creates no duplicate candidate, and a
 //      notice a human already dismissed is never resurrected;
 //   3. an unavailable source is reported accurately - as a failed run and a
 //      degraded health record with a redacted error - not as a clean collection;
 //   4. and staging never touches the public `alerts` collection, in either
-//      database.
+//      project.
 //
 // It drives the collector's real write path (planRun + executeRun through the
 // allowlisted Admin SDK store) with in-memory notices, so it needs no network.
 //
-// The project id is a `demo-` id on purpose: firebase-tools refuses to talk to a
-// real project for `demo-*` ids, so this suite can never touch live data.
+// The project ids are `demo-` ids on purpose: firebase-tools refuses to talk to
+// a real project for `demo-*` ids, so this suite can never touch live data.
 //
 // Run with `npm run test:rules` (wrapped in `firebase emulators:exec`).
 // ---------------------------------------------------------------------------
@@ -36,7 +37,7 @@ import { createIngestStore } from "../../lib/firestoreAdmin.mjs";
 import { executeRun, itemIdsForSources, planRun } from "../../write.mjs";
 import {
   DEFAULT_DATABASE,
-  STAGING_DATABASE,
+  STAGING_PROJECT,
   clearDatabase,
   emulatorEndpoint,
   loadRules,
@@ -51,7 +52,7 @@ const PROJECT_ID = "demo-jntuh-notes";
 const { host, port } = emulatorEndpoint();
 const EMULATOR_HOST = `${host}:${port}`;
 
-const STAGING = { projectId: PROJECT_ID, databaseId: STAGING_DATABASE, host, port };
+const STAGING = { projectId: STAGING_PROJECT, databaseId: DEFAULT_DATABASE, host, port };
 const DEFAULTS = { projectId: PROJECT_ID, databaseId: DEFAULT_DATABASE, host, port };
 
 const SOURCE_ID = "notifications";
@@ -90,18 +91,18 @@ after(async () => {
   await Promise.all([staging.cleanup(), defaults.cleanup()]);
 });
 
-/** The admin client, on the staging database, with the admin claim. */
+/** The admin client, on the staging project, with the admin claim. */
 const adminContext = () => staging.admin;
 
-/** An injected context: staging `db`, public `alertsDb`. */
+/** An injected context: staging-project `db`, production-project `alertsDb`. */
 const contextFor = (db) => ({ context: { db, alertsDb: defaults.admin, sdk: firestoreSdk } });
 
 /** The collector's allowlisted Admin SDK store, pointed at the emulator. */
 function makeStore() {
   return createIngestStore({
-    projectId: PROJECT_ID,
+    projectId: STAGING_PROJECT,
     emulator: true,
-    allowedProjects: [PROJECT_ID],
+    allowedProjects: [STAGING_PROJECT],
     // Only the emulator host is supplied, so an ambient GOOGLE_CLOUD_PROJECT
     // cannot trip the collector's own project check.
     env: { FIRESTORE_EMULATOR_HOST: EMULATOR_HOST },
@@ -171,7 +172,7 @@ async function runCollector(store, sources, maxItems = 10) {
     trigger: "manual",
     actor: "collector-staging-test",
     dryRun: false,
-    projectId: PROJECT_ID,
+    projectId: STAGING_PROJECT,
     databaseId: store.databaseId,
     maxItems,
   });
@@ -180,15 +181,16 @@ async function runCollector(store, sources, maxItems = 10) {
   return { runId, plan };
 }
 
-describe("the collector's store is pinned to the staging database", () => {
-  it("reports staging as its database and echoes it into the run document", async () => {
+describe("the collector's store is pinned to the staging project", () => {
+  it("reports staging as its project/database and echoes them into the run document", async () => {
     const store = makeStore();
     try {
-      assert.equal(store.databaseId, STAGING_DATABASE);
+      assert.equal(store.projectId, STAGING_PROJECT);
+      assert.equal(store.databaseId, DEFAULT_DATABASE);
       const { runId } = await runCollector(store, [healthySource()]);
       const run = await staging.get([INGEST_COLLECTIONS.RUNS, runId]);
-      assert.equal(run.databaseId, STAGING_DATABASE, "the audit trail records the database it wrote to");
-      assert.equal(run.projectId, PROJECT_ID);
+      assert.equal(run.databaseId, DEFAULT_DATABASE, "the audit trail records the database it wrote to");
+      assert.equal(run.projectId, STAGING_PROJECT, "the audit trail records the project it wrote to");
     } finally {
       await store.close();
     }
@@ -224,7 +226,7 @@ describe("scheduled collection stages notices, de-duplicates, and reports failur
       assert.equal(health.consecutiveFailures, 0);
 
       assert.equal(await staging.count("alerts"), 0, "collection staging never creates an alert in staging");
-      // Nothing leaked into the public database, under any name.
+      // Nothing leaked into the production project, under any name.
       assert.equal(await defaults.count(INGEST_COLLECTIONS.ITEMS), 0);
       assert.equal(await defaults.count(INGEST_COLLECTIONS.RUNS), 0);
       assert.equal(await defaults.count(INGEST_COLLECTIONS.HEALTH), 0);

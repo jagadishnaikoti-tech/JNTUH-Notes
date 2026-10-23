@@ -5,24 +5,27 @@
 //   ingestRuns         one document per collector run ("what happened?")
 //   ingestSourceHealth one document per official source (last attempt / success)
 //
-// STAGING LIVES IN ITS OWN DATABASE. Those three collections are read and
-// written in the named Firestore database `staging`, never in `(default)`. The
-// public `alerts` collection - and every other app collection - stays in
-// `(default)`. This module therefore opens TWO Firestore handles from the one
-// app: `db` (staging) for the ingest collections and `alertsDb` (default) for
-// the alert a promotion creates. Nothing here can read or write the public
-// `alerts` collection through the staging handle, and nothing can read or write
-// the ingest collections through the default handle: the two rulesets
-// (firestore.staging.rules / firestore.rules) deny each other's collections.
-// See collector/SECURITY.md for why the split exists.
+// STAGING LIVES IN ITS OWN FIREBASE PROJECT (`jntuh-notes-staging`). Those
+// three collections are read and written in that project's `(default)`
+// database, never in the production project `jntuh-notes-6ef74`. The public
+// `alerts` collection - and every other app collection - stays in production.
+// This module therefore opens TWO Firebase apps: the production app for
+// `alerts` and a dedicated staging app for the ingest collections. A Firebase
+// Auth token is scoped to one project, so each app has its own session; the
+// staging session is established by adminAuth.js (best-effort at login, with an
+// explicit "connect staging" fallback on /admin/ingest). Nothing here can read
+// or write `alerts` through the staging handle, and nothing can read or write
+// the ingest collections through the production handle: the two rulesets
+// (firestore.staging.rules / firestore.rules) deny each other's collections,
+// and the two projects have separate credentials/IAM. See collector/SECURITY.md.
 //
 // This module is the ONLY frontend code that talks to those collections, the
 // same way lib/alerts.js owns `alerts/{id}` and lib/channels.js owns its
-// collection. It reuses the single Firebase bootstrap in lib/firebase.js and
-// the existing admin authorization (custom claim `admin == true`) enforced in
-// the rules - it never creates a second Firebase *app*, never imports the
-// Firebase Admin SDK, and never touches `firebase/firestore` directly (the SDK
-// is loaded on demand so public visitors never download it).
+// collection. It reuses the Firebase bootstrap in lib/firebase.js and the
+// existing admin authorization (custom claim `admin == true`) enforced in the
+// rules - it never imports the Firebase Admin SDK and never touches
+// `firebase/firestore` directly (the SDK is loaded on demand so public visitors
+// never download it).
 //
 // What this module deliberately does NOT do:
 //   * it never verifies or publishes an alert (that stays exclusive to
@@ -31,23 +34,25 @@
 //     carries only what an administrator typed plus the real notice metadata
 //     the collector recorded.
 //
-// Promotion spans two databases, and Firestore has no cross-database
+// Promotion spans two projects, and Firestore has no cross-project
 // transaction, so `promoteIngestItem()` is two steps that are each safe to
-// retry: (1) create the alert DRAFT in `(default)` with a deterministic id and
-// only if that document does not already exist, then (2) claim the staged item
-// in `staging` inside a transaction. A notice can therefore never produce two
-// alerts, an existing alert is never overwritten, and an interruption between
-// the steps leaves the item re-promotable (the retry finds the draft it already
-// made and finishes the claim) - it can never strand or duplicate a notice.
+// retry: (1) create the alert DRAFT in the production project with a
+// deterministic id and only if that document does not already exist, then
+// (2) claim the staged item in the staging project inside a transaction. A
+// notice can therefore never produce two alerts, an existing alert is never
+// overwritten, and an interruption between the steps leaves the item
+// re-promotable (the retry finds the draft it already made and finishes the
+// claim) - it can never strand or duplicate a notice.
 //
 // Testability: every function accepts an optional final `deps` argument whose
-// `context` supplies `{ db, sdk, app, alertsDb? }`. Production callers omit it
-// and the real Firebase instance is used; tests inject fakes or an emulator
-// instance. When an injected context has no `alertsDb`, the alert write falls
-// back to `db` so single-database fakes stay simple.
+// `context` supplies `{ db, sdk, app, stagingApp?, alertsDb? }`. Production
+// callers omit it and the real Firebase instances are used; tests inject fakes
+// or emulator instances. When an injected context has no `alertsDb`, the alert
+// write falls back to `db` so single-project fakes stay simple; production
+// contexts always provide both.
 // ---------------------------------------------------------------------------
 
-import { getFirebaseApp, loadFirestore, loadAuth } from "./firebase.js";
+import { getFirebaseApp, getStagingApp, loadFirestore, loadAuth } from "./firebase.js";
 import {
   ALERT_COLLECTION,
   ALERT_STATUS,
@@ -63,12 +68,19 @@ export const INGEST_COLLECTIONS = Object.freeze({
 });
 
 /**
- * The named Firestore database that holds the collector's staging collections.
- * `(default)` is deliberately NOT accepted as a value here: staging data must
- * never share the public database, and a mismatch must fail loudly rather than
- * silently write to the wrong place. Must match collector/lib/runReport.mjs.
+ * The staging Firebase project. The collector's ingest collections live in
+ * this project's `(default)` database. The PROJECT - enforced by IAM, by the
+ * separate rulesets and by the separate Auth session - is the isolation
+ * boundary, not a database name. Must match collector/lib/runReport.mjs.
  */
-export const STAGING_DATABASE_ID = "staging";
+export const STAGING_PROJECT_ID = "jntuh-notes-staging";
+
+/**
+ * The staging project's primary database. Kept as a constant for callers and
+ * tests that want to assert the handle; `resolveContext()` always uses the
+ * default database of the staging app.
+ */
+export const STAGING_DATABASE_ID = "(default)";
 
 /**
  * The alert document id a promotion derives from a staged notice id. It is
@@ -83,11 +95,6 @@ export function promotionAlertId(itemId) {
   // `promotedAlertId` at 200 characters).
   const safe = clean.replace(/\//g, "_").slice(0, 180);
   return `ingest-${safe}`;
-}
-
-/** True when `databaseId` names the staging database (and only that). */
-export function isStagingDatabase(databaseId) {
-  return databaseId === STAGING_DATABASE_ID;
 }
 
 /** The only review states the rules allow on a staged item. */
@@ -142,33 +149,43 @@ function userError(err, message) {
 }
 
 /**
- * Resolve the Firestore context. Production callers get two handles from the
- * one app; tests inject `{ context: { db, sdk, app, alertsDb? } }`.
+ * Resolve the Firestore context. Production callers get two apps/handles; tests
+ * inject `{ context: { db, sdk, app, stagingApp?, alertsDb? } }`.
  *
- *   db        - the `staging` database: the ingest* collections
- *   alertsDb  - the `(default)` database: the public alerts collection
+ *   db        - the staging project: the ingest* collections
+ *   alertsDb  - the production project: the public alerts collection
  */
 async function resolveContext(deps) {
   if (deps && deps.context) return deps.context;
-  const app = await getFirebaseApp();
+  const [app, stagingApp] = await Promise.all([getFirebaseApp(), getStagingApp()]);
   if (!app) throw new Error("Firebase is not configured for this deployment.");
+  if (!stagingApp) {
+    throw new Error(
+      "The staging project is not configured for this deployment. Set VITE_STAGING_FIREBASE_* to the jntuh-notes-staging web config."
+    );
+  }
   const sdk = await loadFirestore();
   return {
     app,
+    stagingApp,
     sdk,
-    db: sdk.getFirestore(app, STAGING_DATABASE_ID),
-    alertsDb: sdk.getFirestore(app),
+    db: sdk.getFirestore(stagingApp), // staging project, (default)
+    alertsDb: sdk.getFirestore(app), // production project, (default)
   };
 }
 
 /** The database that holds the public `alerts` collection. */
 function resolveAlertsDb(ctx) {
   // Real callers always get `alertsDb` from resolveContext(); injected test
-  // contexts may opt into a single database by leaving it undefined.
+  // contexts may opt into a single project by leaving it undefined.
   return ctx.alertsDb || ctx.db;
 }
 
-/** The administrator handle written to review fields (`promotedBy`). */
+/**
+ * The administrator handle written to review fields (`promotedBy`). It is read
+ * from the PRODUCTION app, where the reviewer signed in; the staging app has
+ * its own session, but the production identity is the authoritative actor.
+ */
 async function resolveActor(ctx, actor) {
   const given = cleanText(actor, MAX_ACTOR);
   if (given) return given;
@@ -568,15 +585,16 @@ export async function returnIngestItemToReview({ itemId } = {}, deps = {}) {
 /**
  * Admin: promote a staged notice into an alert DRAFT - once, and never twice.
  *
- * The public `alerts` collection lives in `(default)` while the staged notice
- * lives in `staging`, and Firestore offers no cross-database transaction, so
- * the operation is two steps that are each individually safe to retry:
+ * The public `alerts` collection lives in the production project while the
+ * staged notice lives in the staging project, and Firestore offers no
+ * cross-project transaction, so the operation is two steps that are each
+ * individually safe to retry:
  *
- *   1. read ingestItems/{itemId} in `staging`   (admin-only read)
+ *   1. read ingestItems/{itemId} in staging      (admin-only read)
  *   2. if it already has an alert id, return that (idempotent - no second alert)
  *   3. validate `input`                          (cleanAlert, existing rules)
- *   4. create alerts/{deterministicId} in `(default)` ONLY IF IT DOES NOT EXIST
- *   5. claim the item in a `staging` transaction (mark promoted + link the id)
+ *   4. create alerts/{deterministicId} in production ONLY IF IT DOES NOT EXIST
+ *   5. claim the item in a staging transaction (mark promoted + link the id)
  *
  * Safety properties that survive the split:
  *   * the alert id is derived from the item id, so a retry always targets the
@@ -701,7 +719,7 @@ export async function promoteIngestItem(
     if (isPermissionError(err)) {
       throw userError(
         err,
-        "Permission denied. Confirm your account has the admin claim and the Firestore rules are deployed for both databases."
+        "Permission denied. Confirm your account has the admin claim and the Firestore rules are deployed for both projects."
       );
     }
     // Validation and other explicit messages pass through unchanged.

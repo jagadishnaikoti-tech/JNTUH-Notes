@@ -1,20 +1,20 @@
 // ---------------------------------------------------------------------------
 // Integration tests for promotion (src/lib/ingest.js) against the REAL Firestore
-// emulator, the REAL two-database layout and BOTH real rulesets.
+// emulator, the REAL two-project layout and BOTH real rulesets.
 //
-// Promotion crosses databases: the staged notice lives in the `staging`
-// database (firestore.staging.rules) and the draft alert it creates lives in
-// `(default)` (firestore.rules). These tests prove what the mocked unit tests
-// cannot:
-//   * the alert draft is accepted by `validAlert` in (default);
+// Promotion crosses projects: the staged notice lives in the
+// `demo-jntuh-notes-staging` project (firestore.staging.rules) and the draft
+// alert it creates lives in `demo-jntuh-notes` (firestore.rules). These tests
+// prove what the mocked unit tests cannot:
+//   * the alert draft is accepted by `validAlert` in production;
 //   * the staged-item claim is accepted by the review-field-only rule in staging;
 //   * the two steps are idempotent: a repeat, and a race, still produce exactly
 //     one alert;
 //   * nothing is ever published and the public cannot read the draft;
 //   * upstream failures leave both documents as they were.
 //
-// The project id is a `demo-` id on purpose: firebase-tools refuses to talk to a
-// real project for `demo-*` ids, so this suite can never touch live data.
+// The project ids are `demo-` ids on purpose: firebase-tools refuses to talk to
+// a real project for `demo-*` ids, so this suite can never touch live data.
 //
 // Run with `npm run test:rules` (wrapped in `firebase emulators:exec`).
 // ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ import * as firestoreSdk from "firebase/firestore";
 import { promoteIngestItem, promotionAlertId } from "../../../src/lib/ingest.js";
 import {
   DEFAULT_DATABASE,
-  STAGING_DATABASE,
+  STAGING_PROJECT,
   clearDatabase,
   emulatorEndpoint,
   loadRules,
@@ -44,7 +44,7 @@ const PUBLIC_RULES = readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
 const PROJECT_ID = "demo-jntuh-notes";
 const { host, port } = emulatorEndpoint();
 
-const STAGING = { projectId: PROJECT_ID, databaseId: STAGING_DATABASE, host, port };
+const STAGING = { projectId: STAGING_PROJECT, databaseId: DEFAULT_DATABASE, host, port };
 const DEFAULTS = { projectId: PROJECT_ID, databaseId: DEFAULT_DATABASE, host, port };
 
 let staging;
@@ -103,22 +103,22 @@ const VALID_INPUT = {
 
 /**
  * An injected context that mirrors production: the ingest client reads/writes
- * `db` (staging) and the promotion creates the alert through `alertsDb`
- * ((default)). Both are rules-enforced clients.
+ * the staging-project `db` and the promotion creates the alert through the
+ * production-project `alertsDb`. Both are rules-enforced clients.
  */
 const contextFor = (db, alertsDb) => ({ context: { db, alertsDb, sdk: firestoreSdk } });
 const adminContext = () => contextFor(staging.admin, defaults.admin);
 const nonAdminContext = () => contextFor(staging.nonAdmin, defaults.nonAdmin);
 
-/** Read the alert from the PUBLIC database, as an admin. */
+/** Read the alert from the PRODUCTION project, as an admin. */
 const readAlert = (id) => defaults.get(["alerts", id]);
-/** Read a staged item from the STAGING database, as an admin. */
+/** Read a staged item from the STAGING project, as an admin. */
 const readItem = (id) => staging.get(["ingestItems", id]);
 
 const ADMIN = { actor: "admin@jntuh.example" };
 
-describe("promotion under the real rules is atomic and idempotent across databases", () => {
-  it("creates exactly one private draft in (default) and records the promotion on the staging item", async () => {
+describe("promotion under the real rules is atomic and idempotent across projects", () => {
+  it("creates exactly one private draft in production and records the promotion on the staging item", async () => {
     await staging.seed(["ingestItems", ITEM_ID], ITEM_DOC);
 
     const result = await promoteIngestItem(
@@ -129,9 +129,9 @@ describe("promotion under the real rules is atomic and idempotent across databas
     assert.equal(result.created, true);
     assert.equal(result.alertId, promotionAlertId(ITEM_ID), "the id is derived from the notice");
 
-    // The alert draft exists in the PUBLIC database and passes validAlert().
+    // The alert draft exists in the PRODUCTION project and passes validAlert().
     const alertData = await readAlert(result.alertId);
-    assert.ok(alertData, "the draft was written to (default)");
+    assert.ok(alertData, "the draft was written to production");
     assert.equal(alertData.status, "draft");
     assert.equal(alertData.verifiedAt, null);
     assert.equal(alertData.verifiedBy, "");
@@ -139,7 +139,7 @@ describe("promotion under the real rules is atomic and idempotent across databas
     assert.equal(alertData.summary, VALID_INPUT.summary);
     assert.equal(alertData.createdBy, ADMIN.actor);
 
-    // The staged item is linked to the new draft, in the STAGING database.
+    // The staged item is linked to the new draft, in the STAGING project.
     const itemData = await readItem(ITEM_ID);
     assert.equal(itemData.reviewState, "promoted");
     assert.equal(itemData.promotedAlertId, result.alertId);
@@ -147,7 +147,7 @@ describe("promotion under the real rules is atomic and idempotent across databas
     assert.ok(itemData.promotedAt, "promotedAt was written as a server timestamp");
 
     // The alert never landed in staging, and no staging collection leaked into
-    // the public database.
+    // the production project.
     assert.equal(await staging.count("alerts"), 0);
     assert.equal(await defaults.count("ingestItems"), 0);
   });

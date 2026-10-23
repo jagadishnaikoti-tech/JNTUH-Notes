@@ -1,11 +1,13 @@
 rules_version = '2';
 
 // ===========================================================================
-// JNTUH Notes - Cloud Firestore security rules for the `(default)` database
+// JNTUH Notes - Cloud Firestore security rules for the PRODUCTION project
 //
-// This is the PUBLIC database: alerts, analyticsEvents, channels, settings and
-// users all live here. The collector's staging collections live in a separate
-// named database (`staging`) with its own ruleset, firestore.staging.rules.
+// This ruleset is deployed to the `(default)` database of the production
+// project (`jntuh-notes-6ef74`). This is the PUBLIC database: alerts,
+// analyticsEvents, channels, settings and users all live here. The collector's
+// staging collections live in the separate project `jntuh-notes-staging` with
+// its own ruleset, firestore.staging.rules.
 //
 // Threat model
 //   * Visitors are anonymous and may only CREATE validated analytics events.
@@ -150,12 +152,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---- ingest* staging collections: NOT in this database -----------------
+    // ---- ingest* staging collections: NOT in this project ------------------
     // The collector staging collections (ingestItems / ingestRuns /
-    // ingestSourceHealth) live in the separate named database `staging`, and
-    // their rules live in `firestore.staging.rules`. They are deliberately
+    // ingestSourceHealth) live in the separate project `jntuh-notes-staging`,
+    // and their rules live in `firestore.staging.rules`. They are deliberately
     // absent here, so this ruleset denies every client (including an
-    // administrator) access to those collection names in `(default)`. That is
+    // administrator) access to those collection names in production. That is
     // what makes a misconfigured client fail loudly instead of silently reading
     // or writing staging data in the public database. See collector/SECURITY.md.
 

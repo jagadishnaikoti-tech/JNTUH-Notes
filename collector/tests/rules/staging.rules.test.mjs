@@ -1,19 +1,21 @@
 // ---------------------------------------------------------------------------
-// Security-rules tests for the STAGING database (firestore.staging.rules).
+// Security-rules tests for the STAGING PROJECT (firestore.staging.rules).
 //
-// The collector stages notices into the named `staging` database, and an
-// administrator reviews them at /admin/ingest. This suite proves:
-//   * the staging collections are invisible to everyone but an admin;
+// The collector stages notices into the `jntuh-notes-staging` project's
+// `(default)` database, and an administrator reviews them at /admin/ingest.
+// This suite proves:
+//   * the staging collections are invisible to everyone but an admin of the
+//     staging project (a production admin token is irrelevant here);
 //   * the collector (Admin SDK) is the only creator of an item;
 //   * an admin may only move an item through the review state machine and can
 //     never change a notice-derived field;
 //   * runs and source-health are read-only to every client;
-//   * the public `alerts` collection does not exist in this database and is not
+//   * the public `alerts` collection does not exist in this project and is not
 //     reachable through this ruleset, even by an admin.
 //
-// The rules are loaded into the emulator's `staging` database (see
-// ./emulatorDb.mjs for the named-database caveat). The project id is a `demo-`
-// id, so firebase-tools can never touch a real project.
+// The rules are loaded into the emulator project `demo-jntuh-notes-staging`
+// (see ./emulatorDb.mjs). The staging and production rulesets are exercised in
+// separate emulator projects, matching the deployed layout.
 //
 // Run with:  npm run test:rules
 // ---------------------------------------------------------------------------
@@ -28,7 +30,8 @@ import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
 import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 
 import {
-  STAGING_DATABASE,
+  DEFAULT_DATABASE,
+  STAGING_PROJECT,
   clearDatabase,
   emulatorEndpoint,
   loadRules,
@@ -41,16 +44,17 @@ const PUBLIC_RULES = readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
 
 const PROJECT_ID = "demo-jntuh-notes";
 const { host, port } = emulatorEndpoint();
-const BASE = { projectId: PROJECT_ID, databaseId: STAGING_DATABASE, host, port };
+const STAGING = { projectId: STAGING_PROJECT, databaseId: DEFAULT_DATABASE, host, port };
+const DEFAULTS = { projectId: PROJECT_ID, databaseId: DEFAULT_DATABASE, host, port };
 
 let env;
 
 before(async () => {
   // Staging rules where staging data lives; the public rules where the public
-  // data lives, so a stray write to the wrong database is denied as well.
-  await loadRules({ ...BASE, rules: STAGING_RULES });
-  await loadRules({ projectId: PROJECT_ID, databaseId: "(default)", host, port, rules: PUBLIC_RULES });
-  env = makeDbEnv(BASE);
+  // data lives, so a stray write to the wrong project is denied as well.
+  await loadRules({ ...STAGING, rules: STAGING_RULES });
+  await loadRules({ ...DEFAULTS, rules: PUBLIC_RULES });
+  env = makeDbEnv(STAGING);
 });
 
 after(async () => {
@@ -58,7 +62,7 @@ after(async () => {
 });
 
 beforeEach(async () => {
-  await clearDatabase(BASE);
+  await clearDatabase(STAGING);
 });
 
 const ITEM_PATH = ["ingestItems", "item-1"];
@@ -256,9 +260,10 @@ describe("ingestRuns and ingestSourceHealth are read-only to clients", () => {
 });
 
 // ---------------------------------------------------------------------------
-// The public alert collection must NOT exist in the staging database. The rules
+// The public alert collection must NOT exist in the staging project. The rules
 // there say nothing about `alerts`, so it is denied by default - even to an
-// admin. This is the rules-layer half of "the collector cannot reach alerts".
+// admin. This is the rules-layer half of "the collector cannot reach alerts";
+// the IAM/project half is documented and checked in collector/SECURITY.md.
 // ---------------------------------------------------------------------------
 
 const PUBLISHED_ALERT = {
@@ -278,8 +283,8 @@ const PUBLISHED_ALERT = {
   schemaVersion: 1,
 };
 
-describe("the staging database cannot reach the public alerts collection", () => {
-  it("an admin cannot read or write alerts in the staging database", async () => {
+describe("the staging project cannot reach the public alerts collection", () => {
+  it("an admin cannot read or write alerts in the staging project", async () => {
     // Seed through the Admin SDK in staging (what an attacker with the
     // collector credential could do), then show no client can read it.
     await env.seed(["alerts", "leaked-1"], PUBLISHED_ALERT);
@@ -288,7 +293,7 @@ describe("the staging database cannot reach the public alerts collection", () =>
     await assertFails(setDoc(doc(env.admin, "alerts", "new-1"), PUBLISHED_ALERT));
   });
 
-  it("unrelated collections stay closed in the staging database", async () => {
+  it("unrelated collections stay closed in the staging project", async () => {
     await assertFails(setDoc(doc(env.admin, "someoneElsesData", "x"), { hello: "world" }));
     await assertFails(setDoc(doc(env.anon, "someoneElsesData", "x"), { hello: "world" }));
   });
@@ -296,11 +301,11 @@ describe("the staging database cannot reach the public alerts collection", () =>
 
 // ---------------------------------------------------------------------------
 // A guard against the most likely mistake: querying staging through the wrong
-// database. The staging collections must resolve here, and the (default)
-// database must deny them (proven in firestore.rules.test.mjs).
+// project. The staging collections must resolve here, and the production project
+// must deny them (proven in firestore.rules.test.mjs).
 // ---------------------------------------------------------------------------
 
-describe("the staging collections resolve in the staging database", () => {
+describe("the staging collections resolve in the staging project", () => {
   it("an admin can read and list ingestItems", async () => {
     await env.seed(ITEM_PATH, ITEM_DOC);
     const snap = await getDoc(doc(env.admin, ...ITEM_PATH));

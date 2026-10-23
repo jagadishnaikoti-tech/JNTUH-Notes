@@ -3,9 +3,11 @@
 //
 // The collector writes Firestore through the Admin SDK, which bypasses
 // `firestore.rules`; Google Cloud IAM is the only real boundary for the runner.
-// Firestore IAM is database-granular, never collection-granular, so the least we
-// can do is (a) grant a custom role that contains only the permissions the code
-// actually uses, and (b) prove that surface here.
+// The isolation boundary is the *Firebase project*: the credential exists only
+// in `jntuh-notes-staging` and has no roles in `jntuh-notes-6ef74`. Firestore IAM
+// is database-granular, never collection-granular, so the least we can do is
+// (a) grant a custom role that contains only the permissions the code actually
+// uses, and (b) prove that surface here.
 //
 // These tests do three things:
 //   1. pin the collector's database operation surface (id lookups + merge
@@ -33,10 +35,11 @@ const INGEST_PLAN = path.join(COLLECTOR, "lib", "ingestPlan.mjs");
 const ROLE_FILE = path.join(COLLECTOR, "iam", "collector-staging-role.json");
 const SECURITY = path.join(COLLECTOR, "SECURITY.md");
 const SCHEDULING = path.join(COLLECTOR, "SCHEDULING.md");
+const README = path.join(COLLECTOR, "README.md");
 
 const ROLE_ID = "jntuhCollectorStaging";
-const PROJECT_ID = "jntuh-notes-6ef74";
-const SERVICE_ACCOUNT = `collector-runner@${PROJECT_ID}.iam.gserviceaccount.com`;
+const PROJECT_ID = "jntuh-notes-staging";
+const SERVICE_ACCOUNT = `jntuh-staging-collector@${PROJECT_ID}.iam.gserviceaccount.com`;
 
 const read = (file) => readFileSync(file, "utf8");
 const withoutComments = (source) => source.replace(/^\s*\/\/.*$/gm, "");
@@ -191,7 +194,7 @@ test("the role documented in SECURITY.md is the checked-in role", () => {
   assert.match(security, new RegExp(`--file=collector/iam/collector-staging-role\\.json`));
   assert.match(
     security,
-    new RegExp(`--role='projects/${PROJECT_ID}/roles/${ROLE_ID}'`),
+    new RegExp(`--role=["']projects/${PROJECT_ID}/roles/${ROLE_ID}["']`),
     "the binding must name the custom role",
   );
   assert.ok(security.includes(SERVICE_ACCOUNT), "the binding must name the dedicated service account");
@@ -234,19 +237,122 @@ test("the documentation states the boundary honestly: the role alone isolates no
     "the docs must say the role alone does not isolate individual collections",
   );
   assert.match(prose, /collection-level/, "the docs must explain that Firestore IAM has no collection-level role");
-  assert.match(prose, /alerts/, "the docs must say the alerts collection is reachable by the credential");
+  assert.match(prose, /alerts/, "the docs must mention the production alerts collection");
   assert.match(prose, /database/i, "the docs must state the granularity that IAM does offer");
 
-  // Option B adds a real collection-isolation boundary, but it belongs to the
-  // DATABASE split, never to the IAM role. No sentence may credit the role with
-  // isolating collections, and the database claim must be stated.
+  // The real collection-isolation boundary is the PROJECT split, never the IAM
+  // role. No sentence may credit the role with isolating collections.
   assert.match(
     prose,
-    /separate database \*\*does\*\* isolate collections/,
-    "the docs must attribute the collection isolation to the separate database",
+    /separate Firebase project \*\*does\*\* isolate/,
+    "the docs must attribute the collection isolation to the separate project",
+  );
+  assert.match(
+    prose,
+    /no roles in .*jntuh-notes-6ef74/i,
+    "the docs must state that the staging credential has no production roles",
   );
   assert.ok(
     !/\brole\b[^.]*isolate[sd]?\s+collections/i.test(prose),
     "the docs must not credit the IAM role with isolating collections",
+  );
+});
+
+test("the WIF instructions grant only workloadIdentityUser, scoped to the repository and branch", () => {
+  const security = read(SECURITY);
+  const scheduling = read(SCHEDULING);
+  const docs = security + scheduling;
+
+  // Impersonation must use the narrow WIF role, never a broader token-minting
+  // role. This is what the WIF setup instructions must keep saying.
+  assert.ok(
+    !/roles\/iam\.serviceAccountTokenCreator/.test(docs),
+    "WIF setup must not grant (or recommend) roles/iam.serviceAccountTokenCreator",
+  );
+  assert.match(
+    security,
+    /--role=roles\/iam\.workloadIdentityUser\b/,
+    "the service-account binding must grant roles/iam.workloadIdentityUser",
+  );
+  assert.match(
+    scheduling,
+    /roles\/iam\.workloadIdentityUser/,
+    "SCHEDULING.md must name the same narrow impersonation role",
+  );
+
+  // The binding targets the staging service account only.
+  const binding = security.match(
+    /gcloud iam service-accounts add-iam-policy-binding[\s\S]*?--member="([^"]+)"/,
+  );
+  assert.ok(binding, "SECURITY.md must contain an impersonation binding command");
+  assert.match(
+    binding[0],
+    /jntuh-staging-collector@jntuh-notes-staging\.iam\.gserviceaccount\.com/,
+    "the impersonation binding must target the staging service account",
+  );
+  assert.ok(
+    !/jntuh-notes-6ef74/.test(binding[0]),
+    "the impersonation binding must never mention the production project",
+  );
+
+  // The principal set is narrowed to the same branch/environment as the
+  // provider condition; a repository-only principal set is broader than needed.
+  assert.match(
+    binding[1],
+    /\/attribute\.(ref|environment)\//,
+    "the principal set must be scoped by attribute.ref or attribute.environment",
+  );
+  assert.ok(
+    !/\/attribute\.repository\//.test(binding[1]),
+    "the principal set must not stop at the repository (branch/environment is required)",
+  );
+
+  // The provider itself must carry a non-wildcard repository+branch/environment
+  // trust condition.
+  const conditionMatch = security.match(/--attribute-condition="([^"]+)"/);
+  assert.ok(conditionMatch, "the provider must set an --attribute-condition");
+  const condition = conditionMatch[1];
+  assert.match(condition, /assertion\.repository\s*==\s*'[^']+'/);
+  assert.match(condition, /assertion\.(ref|environment)\s*==\s*'[^']+'/);
+  assert.ok(!condition.includes("*"), "the provider condition must not contain a wildcard");
+  assert.ok(
+    !/repository_owner/.test(condition),
+    "the provider condition must pin a repository, not an owner wildcard",
+  );
+});
+
+test("documented --allow-production examples write to staging and never target production", () => {
+  const readme = read(README);
+
+  // Only inspect executable examples; prose may (correctly) say production is
+  // refused by name.
+  const commands = readme
+    .split(/\r?\n/)
+    .filter((line) => /^\s*node\b/.test(line) && line.includes("--allow-production"));
+  assert.ok(commands.length > 0, "README.md must show how the live-write gate is used");
+
+  for (const command of commands) {
+    assert.match(
+      command,
+      /--project\s+jntuh-notes-staging\b/,
+      `a --allow-production example must name the staging project: ${command}`,
+    );
+    assert.ok(
+      !/jntuh-notes-6ef74/.test(command),
+      `a --allow-production example must never target production: ${command}`,
+    );
+  }
+
+  // The flag's name is misleading, so the documentation must say so plainly.
+  const prose = readme.replace(/\s+/g, " ");
+  assert.match(
+    prose,
+    /never (?:enables|a) production (?:write|switch)/i,
+    "README.md must state that --allow-production never enables production",
+  );
+  assert.match(
+    prose,
+    /production is refused unconditionally/i,
+    "README.md must state that production is refused unconditionally",
   );
 });

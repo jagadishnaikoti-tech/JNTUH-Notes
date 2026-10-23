@@ -305,15 +305,16 @@ test("the public site bundle never depends on the Firebase Admin SDK", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Option B: separate Firestore database for collector staging.
+// Two-project split: collector staging lives in a separate Firebase project.
 //
-// The collector's credential now has a *database-level* boundary: staging data
-// lives in the named `staging` database and the public data in `(default)`. These
-// invariants keep the database id pinned in code so no environment variable or
-// caller can quietly redirect a staging write into the public database.
+// The collector's credential now has a *project-level* boundary: staging data
+// lives in `jntuh-notes-staging` and the public data in `jntuh-notes-6ef74`.
+// These invariants keep the project and database ids pinned in code so no
+// environment variable or caller can quietly redirect a staging write into the
+// production project.
 // ---------------------------------------------------------------------------
 
-test("the staging database is pinned in code, never chosen by the environment", () => {
+test("the staging target is pinned in code, never chosen by the environment", () => {
   const store = readFileSync(path.join(COLLECTOR_DIR, ADMIN_MODULE), "utf8");
   assert.match(store, /databaseId = STAGING_DATABASE_ID/, "the store defaults to staging");
   assert.ok(

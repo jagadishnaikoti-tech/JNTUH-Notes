@@ -7,7 +7,7 @@
 // second collection pipeline and no new write path: it resolves the run policy
 // (lib/runPolicy.mjs) from the environment and then executes the ordinary CLI
 // (collector/index.mjs) as a child process. Every guard the CLI already applies
-// - project allowlist, emulator/production separation, staging-collection
+// - project allowlist, emulator/live separation, staging-collection
 // allowlist, operation caps - therefore still applies on top of the policy's.
 //
 // Deliberately does NOT forward process.argv: a caller must not be able to add

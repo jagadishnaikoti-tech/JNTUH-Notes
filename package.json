@@ -16,7 +16,8 @@
     "test:rules": "firebase --config firebase.e2e.json emulators:exec --only firestore --project demo-jntuh-notes \"node --test --test-concurrency=1 collector/tests/rules/firestore.rules.test.mjs collector/tests/rules/staging.rules.test.mjs collector/tests/rules/ingest.promotion.rules.test.mjs collector/tests/rules/ingest.e2e.rules.test.mjs collector/tests/rules/collector.staging.rules.test.mjs\"",
     "admin:create": "node scripts/create-admin.mjs",
     "admin:grant": "node scripts/set-admin.mjs",
-    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes"
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes --project jntuh-notes-6ef74",
+    "deploy:rules:staging": "firebase --config firebase.staging.json deploy --only firestore:rules,firestore:indexes --project jntuh-notes-staging"
   },
   "dependencies": {
     "firebase": "^11.10.0",

@@ -1,11 +1,12 @@
 // ---------------------------------------------------------------------------
-// Option B: separate-database isolation for the collector's staging data.
+// Two-PROJECT isolation for the collector's staging data.
 //
 // The collector, the admin review UI and the rules must all agree that the
-// ingest collections live in the named `staging` Firestore database, and that
-// the public `(default)` database is unreachable for them. These tests are
-// static (no emulator, no network): they pin the configuration and the code so a
-// future edit cannot quietly re-merge the two databases or introduce a fallback.
+// ingest collections live in the `jntuh-notes-staging` Firebase project's
+// `(default)` database, and that the production project `jntuh-notes-6ef74` is
+// unreachable for them. These tests are static (no emulator, no network): they
+// pin the configuration and the code so a future edit cannot quietly re-merge
+// the two projects or introduce a fallback.
 //
 // The behavioural proof lives in collector/tests/rules/*.test.mjs (emulator).
 // ---------------------------------------------------------------------------
@@ -17,12 +18,13 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import {
-  DEFAULT_DATABASE_ID,
+  PRODUCTION_PROJECT_ID,
   STAGING_COLLECTIONS,
   STAGING_DATABASE_ID,
+  STAGING_PROJECT_ID,
   resolveDatabaseId,
 } from "../lib/runReport.mjs";
-import { STAGING_DATABASE_ID as FRONTEND_STAGING_DATABASE_ID } from "../../src/lib/ingest.js";
+import { STAGING_PROJECT_ID as FRONTEND_STAGING_PROJECT_ID } from "../../src/lib/ingest.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (rel) => readFileSync(path.join(ROOT, rel), "utf8");
@@ -31,26 +33,27 @@ const readJson = (rel) => JSON.parse(read(rel));
 const INGEST_COLLECTION_NAMES = Object.values(STAGING_COLLECTIONS);
 const INGEST_IDENTIFIERS = ["ingestItems", "ingestRuns", "ingestSourceHealth"];
 
-test("the collector and the admin UI agree on the staging database id", () => {
-  assert.equal(STAGING_DATABASE_ID, "staging");
-  assert.equal(FRONTEND_STAGING_DATABASE_ID, STAGING_DATABASE_ID);
-  assert.equal(DEFAULT_DATABASE_ID, "(default)");
-  assert.notEqual(STAGING_DATABASE_ID, DEFAULT_DATABASE_ID);
+test("the collector and the admin UI agree on the staging project", () => {
+  assert.equal(STAGING_PROJECT_ID, "jntuh-notes-staging");
+  assert.equal(PRODUCTION_PROJECT_ID, "jntuh-notes-6ef74");
+  assert.notEqual(STAGING_PROJECT_ID, PRODUCTION_PROJECT_ID);
+  assert.equal(FRONTEND_STAGING_PROJECT_ID, STAGING_PROJECT_ID);
+  assert.equal(STAGING_DATABASE_ID, "(default)");
 });
 
-test("resolveDatabaseId accepts only the staging database", () => {
+test("resolveDatabaseId accepts only the staging project's primary database", () => {
   assert.equal(resolveDatabaseId(), STAGING_DATABASE_ID);
-  assert.equal(resolveDatabaseId("staging"), STAGING_DATABASE_ID);
+  assert.equal(resolveDatabaseId("(default)"), STAGING_DATABASE_ID);
   // Surrounding whitespace from an environment variable is tolerated.
-  assert.equal(resolveDatabaseId("  staging  "), STAGING_DATABASE_ID);
+  assert.equal(resolveDatabaseId("  (default)  "), STAGING_DATABASE_ID);
   for (const unsafe of [
-    "(default)",
+    "staging",
+    "prod",
     "default",
     "",
     "   ",
     null,
-    "prod",
-    "Staging",
+    "STAGING",
     "staging-2",
     "staging.x",
   ]) {
@@ -62,33 +65,55 @@ test("resolveDatabaseId accepts only the staging database", () => {
   }
 });
 
-test("firebase.json deploys the staging rules to the staging database only", () => {
+test("firebase.json deploys the production rules only", () => {
   const config = readJson("firebase.json");
-  assert.ok(Array.isArray(config.firestore), "the firestore config is a list of databases");
-  assert.equal(config.firestore.length, 2);
-
-  const byDatabase = new Map(config.firestore.map((entry) => [entry.database, entry]));
-  assert.deepEqual([...byDatabase.keys()].sort(), ["(default)", "staging"]);
-
-  assert.equal(byDatabase.get("(default)").rules, "firestore.rules");
-  assert.equal(byDatabase.get("(default)").indexes, "firestore.indexes.json");
-  assert.equal(byDatabase.get("staging").rules, "firestore.staging.rules");
-  assert.equal(byDatabase.get("staging").indexes, "firestore.staging.indexes.json");
-
-  for (const entry of config.firestore) {
-    assert.ok(existsSync(path.join(ROOT, entry.rules)), `${entry.rules} exists`);
-    assert.ok(existsSync(path.join(ROOT, entry.indexes)), `${entry.indexes} exists`);
-  }
+  assert.ok(!Array.isArray(config.firestore), "production uses a single firestore entry");
+  assert.equal(config.firestore.rules, "firestore.rules");
+  assert.equal(config.firestore.indexes, "firestore.indexes.json");
+  assert.ok(
+    !/staging/i.test(config.firestore.rules),
+    "the production config must not reference the staging ruleset",
+  );
+  assert.ok(existsSync(path.join(ROOT, config.firestore.rules)));
+  assert.ok(existsSync(path.join(ROOT, config.firestore.indexes)));
 });
 
-test("the emulator e2e config stays single-database (documented limitation)", () => {
-  // firebase-tools' CLI warns that the Firestore emulator does not support
-  // multiple databases and would load NO rules for a multi-entry list, so the
-  // e2e config keeps one entry and the rules tests load each database's rules
-  // explicitly (collector/tests/rules/emulatorDb.mjs).
+test("firebase.staging.json deploys the staging rules to the staging project", () => {
+  const config = readJson("firebase.staging.json");
+  assert.ok(!Array.isArray(config.firestore), "staging uses a single firestore entry");
+  assert.equal(config.firestore.rules, "firestore.staging.rules");
+  assert.equal(config.firestore.indexes, "firestore.staging.indexes.json");
+  assert.ok(existsSync(path.join(ROOT, config.firestore.rules)));
+  assert.ok(existsSync(path.join(ROOT, config.firestore.indexes)));
+});
+
+test("the emulator config supports two projects", () => {
+  // The rules tests load the staging ruleset into a second demo project, so the
+  // emulator must not be locked to the `--project` argument.
   const config = readJson("firebase.e2e.json");
+  assert.equal(config.emulators.singleProjectMode, false);
   assert.ok(!Array.isArray(config.firestore), "firebase.e2e.json keeps a single firestore entry");
   assert.equal(config.firestore.rules, "firestore.rules");
+});
+
+test("the workflow targets the staging project with WIF, never production", () => {
+  const workflow = read(".github/workflows/collect-alerts.yml");
+
+  assert.match(workflow, /COLLECTOR_PROJECT_ID:\s*jntuh-notes-staging/);
+  assert.match(workflow, /COLLECTOR_DATABASE_ID:\s*"\(default\)"/);
+  assert.match(workflow, /google-github-actions\/auth@v2/);
+  assert.match(workflow, /id-token:\s*write/);
+  assert.match(workflow, /GCP_WORKLOAD_IDENTITY_PROVIDER/);
+  assert.match(workflow, /GCP_COLLECTOR_SERVICE_ACCOUNT/);
+  assert.match(workflow, /COLLECTOR_STAGING_ENABLED/);
+
+  // No long-lived credential and no production project as a write target.
+  assert.ok(!/FIREBASE_SERVICE_ACCOUNT/.test(workflow), "no service-account secret");
+  assert.ok(!/secrets\./.test(workflow), "the workflow must not read repository secrets");
+  assert.ok(
+    !/COLLECTOR_PROJECT_ID:\s*jntuh-notes-6ef74/.test(workflow),
+    "the collector must never be pointed at production",
+  );
 });
 
 test("the staging rules own the ingest collections and deny alerts", () => {
@@ -116,7 +141,7 @@ test("the staging rules own the ingest collections and deny alerts", () => {
   }
 });
 
-test("the public rules no longer mention the ingest collections", () => {
+test("the production rules no longer mention the ingest collections", () => {
   const publicRules = read("firestore.rules");
   for (const name of INGEST_IDENTIFIERS) {
     assert.ok(
@@ -136,34 +161,49 @@ test("every staging collection name is a real ingest collection", () => {
   assert.deepEqual([...INGEST_COLLECTION_NAMES].sort(), [...INGEST_IDENTIFIERS].sort());
 });
 
-test("the collector's store always passes an explicit database id", () => {
+test("the collector's store refuses production and passes an explicit database id", () => {
   const source = read("collector/lib/firestoreAdmin.mjs");
-  // It must resolve and validate the id...
+  // The production project is refused explicitly...
+  assert.match(source, /PRODUCTION_PROJECT_ID/);
+  assert.match(source, /refusing the production project/);
+  // ...the staging project is the default allowlist...
+  assert.match(source, /allowedProjects = \[STAGING_PROJECT_ID\]/);
+  // ...and the database id is resolved and passed explicitly.
   assert.match(source, /resolveDatabaseId\(databaseId\)/);
-  // ...and hand it to getFirestore. A bare getFirestore(app) would target
-  // `(default)` and is the exact mistake this design forbids.
   assert.match(source, /getFirestore\(firebaseApp,\s*resolvedDatabaseId\)/);
   assert.ok(
     !/getFirestore\(\s*firebaseApp\s*\)/.test(source),
     "firestoreAdmin.mjs must never call getFirestore(app) without a database id",
   );
-  // The staging database id is imported from the shared vocabulary.
-  assert.match(source, /STAGING_DATABASE_ID/);
+  assert.match(source, /STAGING_PROJECT_ID/);
 });
 
-test("the admin ingest client opens the staging database and the alerts database", () => {
+test("the admin ingest client uses two Firebase APPS, not two databases of one app", () => {
   const source = read("src/lib/ingest.js");
-  // Two handles from one app: staging for ingest, (default) for alerts.
-  assert.match(source, /sdk\.getFirestore\(app,\s*STAGING_DATABASE_ID\)/);
+  // Staging is a separate app/project; alerts stay on the production app.
+  assert.match(source, /getStagingApp/);
+  assert.match(source, /db:\s*sdk\.getFirestore\(stagingApp\)/);
   assert.match(source, /alertsDb:\s*sdk\.getFirestore\(app\)/);
-  // Promotion must create the alert through the alerts database.
+  // Promotion must create the alert through the production alerts handle.
   assert.match(source, /resolveAlertsDb\(ctx\)/);
+  // The old same-app/named-database design must be gone.
+  assert.ok(
+    !/getFirestore\(app,\s*STAGING_DATABASE_ID\)/.test(source),
+    "ingest.js must not open staging as a named database of the production app",
+  );
+  assert.match(source, /STAGING_PROJECT_ID\s*=\s*"jntuh-notes-staging"/);
 });
 
-test("the staging-database decision is documented", () => {
+test("the two-project decision is documented", () => {
   const security = read("collector/SECURITY.md");
-  assert.match(security, /staging/i);
-  assert.match(security, /(default)/);
+  assert.match(security, /jntuh-notes-staging/);
+  assert.match(security, /jntuh-notes-6ef74/);
+  assert.match(security, /Workload Identity|WIF/i);
+
   const scheduling = read("collector/SCHEDULING.md");
-  assert.match(scheduling, /staging/i);
+  assert.match(scheduling, /jntuh-notes-staging/);
+  assert.match(scheduling, /Workload Identity|WIF/i);
+
+  const env = read(".env.example");
+  assert.match(env, /VITE_STAGING_FIREBASE_PROJECT_ID=jntuh-notes-staging/);
 });

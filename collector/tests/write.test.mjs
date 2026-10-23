@@ -12,7 +12,7 @@ function makeStore({ failOn = null, failure = null } = {}) {
   let calls = 0;
 
   return {
-    projectId: "jntuh-notes-6ef74",
+    projectId: "jntuh-notes-staging",
     mode: "test",
     isEmulator: true,
     async readItems(ids) {
@@ -105,7 +105,7 @@ function makePlan({ runId = "r1", now = () => NOW, dryRun = false, ...rest } = {
     existingHealth: new Map(),
     runId,
     startedAt: NOW,
-    projectId: "jntuh-notes-6ef74",
+    projectId: "jntuh-notes-staging",
     dryRun,
     now,
     ...rest,
@@ -132,7 +132,7 @@ test("planRun plans new items and health", () => {
     existingHealth: new Map(),
     runId: "r1",
     startedAt: NOW,
-    projectId: "jntuh-notes-6ef74",
+    projectId: "jntuh-notes-staging",
     now: () => NOW,
   });
   assert.equal(plan.status, RUN_STATUS.OK);
@@ -164,7 +164,7 @@ test("executeRun writes running then final, updates store", async () => {
     existingHealth: new Map(),
     runId: "r1",
     startedAt: NOW,
-    projectId: "jntuh-notes-6ef74",
+    projectId: "jntuh-notes-staging",
     dryRun: false,
     now: () => NOW,
   });
@@ -199,7 +199,7 @@ test("idempotency guard skips items already applied to the same runId", async ()
     existingHealth: new Map(),
     runId,
     startedAt: NOW,
-    projectId: "jntuh-notes-6ef74",
+    projectId: "jntuh-notes-staging",
     dryRun: false,
     now: () => NOW,
   });
@@ -211,7 +211,7 @@ test("idempotency guard skips items already applied to the same runId", async ()
     existingHealth: store._health,
     runId,
     startedAt: new Date("2026-10-18T00:00:00Z"),
-    projectId: "jntuh-notes-6ef74",
+    projectId: "jntuh-notes-staging",
     dryRun: false,
     now: () => new Date("2026-10-18T00:00:00Z"),
   });
@@ -247,7 +247,7 @@ test("suspicious swing causes source to be skipped (isolated)", () => {
     existingHealth: store._health,
     runId: "r2",
     startedAt: NOW,
-    projectId: "jntuh-notes-6ef74",
+    projectId: "jntuh-notes-staging",
     now: () => NOW,
   });
   assert.equal(plan.status, RUN_STATUS.PARTIAL);
@@ -277,7 +277,7 @@ test("operation cap causes run to be refused", () => {
     existingHealth: new Map(),
     runId: "r3",
     startedAt: NOW,
-    projectId: "jntuh-notes-6ef74",
+    projectId: "jntuh-notes-staging",
     now: () => NOW,
     maxItems: 2000, // allow new items
     limits: { maxOperations: 100 }, // cap low
@@ -437,7 +437,7 @@ test("planRun still defaults to a dry-run plan and exposes the flag", () => {
     existingHealth: new Map(),
     runId: "r-default-dry",
     startedAt: NOW,
-    projectId: "jntuh-notes-6ef74",
+    projectId: "jntuh-notes-staging",
     now: () => NOW,
   });
   assert.equal(plan.dryRun, true);
@@ -455,7 +455,7 @@ test("a default (dry-run) plan is refused and causes zero commitMutations calls"
     existingHealth: new Map(),
     runId: "r-default-exec",
     startedAt: NOW,
-    projectId: "jntuh-notes-6ef74",
+    projectId: "jntuh-notes-staging",
     now: () => NOW,
   });
 

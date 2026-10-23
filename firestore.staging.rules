@@ -1,31 +1,34 @@
 rules_version = '2';
 
 // ===========================================================================
-// JNTUH Notes - Cloud Firestore security rules for the STAGING database
+// JNTUH Notes - Cloud Firestore security rules for the STAGING PROJECT
 //
-// This ruleset is deployed to the named database `staging`, NOT to
-// `(default)`. The collector stages notices there (ingestItems / ingestRuns /
-// ingestSourceHealth) and an administrator reviews them at /admin/ingest. The
-// public `alerts` collection lives in the `(default)` database and is governed
-// by firestore.rules.
+// This ruleset is deployed to the `(default)` database of the separate Firebase
+// project `jntuh-notes-staging`, NOT to the production project
+// `jntuh-notes-6ef74`. The collector stages notices there (ingestItems /
+// ingestRuns / ingestSourceHealth) and an administrator reviews them at
+// /admin/ingest. The public `alerts` collection lives in the production project
+// and is governed by firestore.rules.
 //
-// Why a separate database at all?
+// Why a separate project at all?
 //   The collector writes through the Firebase Admin SDK, which bypasses these
-//   rules, and Google Cloud IAM cannot be scoped to a collection. Isolating the
-//   staging collections in their own database is the only way to give the
-//   collector credential a *database-level* boundary that cannot reach `alerts`.
+//   rules, and Google Cloud IAM cannot be scoped to a collection. Giving the
+//   collector credential IAM only on its own project is the boundary that keeps
+//   it out of production. The project split also means the staging admin session
+//   is separate from production (Firebase Auth tokens are project-scoped).
 //   See collector/SECURITY.md.
 //
-// Threat model (unchanged from the default ruleset):
-//   * Only an authenticated administrator (custom claim `admin == true`) may
-//     read the staging collections.
+// Threat model:
+//   * Only an authenticated administrator of THIS project (custom claim
+//     `admin == true`) may read the staging collections. A production admin
+//     token is not accepted here.
 //   * The collector, not a client, owns each item's identity and every
 //     notice-derived field. The single client mutation permitted is an
 //     administrator moving a staged item through the review state machine.
-//   * Nothing in this database is ever public, and nothing here can publish an
-//     alert: publishing lives entirely in the `(default)` database.
+//   * Nothing in this project is ever public, and nothing here can publish an
+//     alert: publishing lives entirely in the production project.
 //
-// Deploy with:  firebase deploy --only firestore:rules
+// Deploy with:  npm run deploy:rules:staging
 // ===========================================================================
 
 service cloud.firestore {
@@ -111,7 +114,7 @@ service cloud.firestore {
     }
 
     // Everything else - including `alerts` - is denied by default. The public
-    // alert collection does not exist in this database and is not reachable
+    // alert collection does not exist in this project and is not reachable
     // through this ruleset even by an administrator.
   }
 }

@@ -22,10 +22,11 @@ import { SourceError, isSourceFailure } from "./lib/errors.mjs";
 import { DraftError, toAlertDraft } from "./lib/alertDraft.mjs";
 import { structureFingerprint } from "./lib/ingestIds.mjs";
 import {
-  INTENDED_PROJECT_ID,
+  PRODUCTION_PROJECT_ID,
   RUN_STATUS,
   SOURCE_OUTCOME,
   STAGING_DATABASE_ID,
+  STAGING_PROJECT_ID,
 } from "./lib/runReport.mjs";
 
 /** Every adapter is registered here; adding a source is one import + one line. */
@@ -54,19 +55,20 @@ Options
 
 Write-mode options (guarded)
   --write                Enable staging writes to Firestore.
-  --project <project-id> Required when --write is set. Must equal ${INTENDED_PROJECT_ID}.
-  --allow-production     Required for non-emulator writes.
+  --project <project-id> Required when --write is set. Must equal ${STAGING_PROJECT_ID}.
+  --allow-production     Required for live (non-emulator) writes to the staging project.
   --emulator             Use Firestore emulator (requires FIRESTORE_EMULATOR_HOST).
   --max-items <number>   Cap newly created items per run (applied to write path).
 
 Staging target
-  Every write goes to the named Firestore database "${STAGING_DATABASE_ID}", never to
-  "(default)". The public alert collection lives in "(default)" and is out of
-  reach for this collector. The database id is not a flag: it is pinned, so a
-  caller cannot redirect staging into the public database (fail closed).
+  Every write goes to the staging Firebase project "${STAGING_PROJECT_ID}",
+  database "${STAGING_DATABASE_ID}". The production project "${PRODUCTION_PROJECT_ID}"
+  (which holds the public alert collection) is explicitly refused. The
+  credential is scoped to the staging project by IAM; the project and database
+  are pinned in code, so a caller cannot redirect writes (fail closed).
 
 Defaults
-  Dry run (no writes) unless --write is given. Production writes require both
+  Dry run (no writes) unless --write is given. Live writes require both
   --project and --allow-production and must not have FIRESTORE_EMULATOR_HOST set.
   Emulator writes require --emulator and FIRESTORE_EMULATOR_HOST.
 `;
@@ -131,15 +133,18 @@ function parseCli() {
 
   if (write) {
     if (!project) fail("--write requires --project <project-id>");
-    if (project !== INTENDED_PROJECT_ID) fail(`refusing to write to unknown project "${project}" (expected ${INTENDED_PROJECT_ID})`);
+    if (project === PRODUCTION_PROJECT_ID) {
+      fail(`refusing the production project "${PRODUCTION_PROJECT_ID}": the collector writes only to "${STAGING_PROJECT_ID}"`);
+    }
+    if (project !== STAGING_PROJECT_ID) fail(`refusing to write to unknown project "${project}" (expected ${STAGING_PROJECT_ID})`);
     if (emulator) {
       if (allowProduction) fail("--emulator cannot be combined with --allow-production");
       const host = String(process.env.FIRESTORE_EMULATOR_HOST ?? "").trim();
       if (!host) fail("--emulator requires FIRESTORE_EMULATOR_HOST to be set");
     } else {
-      if (!allowProduction) fail("production writes require --allow-production");
+      if (!allowProduction) fail("live writes require --allow-production");
       if (process.env.FIRESTORE_EMULATOR_HOST) {
-        fail("refusing production write while FIRESTORE_EMULATOR_HOST is set");
+        fail("refusing a live write while FIRESTORE_EMULATOR_HOST is set");
       }
     }
   }
@@ -375,7 +380,12 @@ async function main() {
     const runId = `${startedAt.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}-${randomUUID().slice(0, 8)}`;
     const commitSha = process.env.GITHUB_SHA || process.env.GIT_COMMIT || "";
     const collectorVersion = process.env.COLLECTOR_VERSION || "unknown";
-    const trigger = process.env.CI === "true" ? "schedule" : "manual";
+    // Derive the trigger from the event, not from CI: a GitHub workflow_dispatch
+    // run is manual even though it sets CI=true. A real cron run reports
+    // "schedule"; a local CLI run (or a non-GitHub CI) reports "manual".
+    const event = String(process.env.GITHUB_EVENT_NAME ?? "").trim();
+    const trigger =
+      event === "schedule" ? "schedule" : event === "workflow_dispatch" ? "manual" : "manual";
 
     // Dynamic imports so that a dry run never loads the Admin SDK.
     const [{ createIngestStore }, { planRun, executeRun, itemIdsForSources }] = await Promise.all([

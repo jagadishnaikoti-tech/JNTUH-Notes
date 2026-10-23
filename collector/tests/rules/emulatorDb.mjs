@@ -1,22 +1,19 @@
 // ---------------------------------------------------------------------------
-// Emulator helper for the two-database rules tests.
+// Emulator helper for the two-PROJECT rules tests.
 //
-// The app now uses two Cloud Firestore databases:
-//   (default)  public: alerts, analyticsEvents, channels, settings, users
-//   staging    collector staging: ingestItems, ingestRuns, ingestSourceHealth
+// The app now uses two Cloud Firestore projects:
+//   demo-jntuh-notes          production: alerts, analyticsEvents, channels, ...
+//   demo-jntuh-notes-staging  collector staging: ingestItems, ingestRuns, ...
 //
-// `@firebase/rules-unit-testing` can only load rules into, and clear,
-// `(default)` (`initializeTestEnvironment`, `clearFirestore`), and
-// firebase-tools logs "Cloud Firestore Emulator does not support multiple
-// databases yet". The emulator *binary* shipped with firebase-tools 15.34.0 does
-// nonetheless keep named databases separate and honour per-database rules via
-// the REST endpoints used below. This module wires that up so the rules tests
-// exercise the real two-database layout instead of pretending the emulator has
-// only one database.
+// Each project uses its own `(default)` database. `@firebase/rules-unit-testing`
+// can only load rules into, and clear, one project's `(default)` database, so
+// this module uses the emulator REST endpoints for both projects. That is what
+// lets the tests exercise the real two-project layout. The emulator must run
+// with `singleProjectMode: false` (see firebase.e2e.json).
 //
-// If a future emulator stops honouring named-database rules or isolation, these
-// tests fail loudly (an assertion that expected "allow" sees permission-denied,
-// or seeded documents are missing) - they never pass silently.
+// If the emulator stops honouring per-project rules or isolation, these tests
+// fail loudly (an assertion that expected "allow" sees permission-denied, or
+// seeded documents are missing) - they never pass silently.
 // ---------------------------------------------------------------------------
 
 import { initializeApp, deleteApp } from "firebase/app";
@@ -27,8 +24,11 @@ import {
 } from "firebase-admin/app";
 import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
 
-/** The named staging database. Kept in sync with the app/rules by the tests. */
-export const STAGING_DATABASE = "staging";
+/** The staging project. Kept in sync with the app/rules by the tests. */
+export const STAGING_PROJECT = "demo-jntuh-notes-staging";
+/** The production project used by the public rules tests. */
+export const PUBLIC_PROJECT = "demo-jntuh-notes";
+/** Both projects use their primary database. */
 export const DEFAULT_DATABASE = "(default)";
 
 let seq = 0;
@@ -70,7 +70,7 @@ export async function loadRules({ projectId, databaseId, rules, host, port }) {
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `failed to load rules into "${databaseId}": HTTP ${res.status} ${body}`,
+      `failed to load rules into ${projectId}/${databaseId}: HTTP ${res.status} ${body}`,
     );
   }
 }
@@ -82,7 +82,7 @@ export async function clearDatabase({ projectId, databaseId, host, port }) {
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `failed to clear database "${databaseId}": HTTP ${res.status} ${body}`,
+      `failed to clear database ${projectId}/${databaseId}: HTTP ${res.status} ${body}`,
     );
   }
 }
@@ -155,6 +155,7 @@ export function makeDbEnv({ projectId, databaseId, host, port }) {
     admin: clientDb({ projectId, databaseId, host, port, uid: "admin-1", claims: { admin: true } }),
   };
   return {
+    projectId,
     databaseId,
     adminDb: admin.db,
     anon: clients.anon.db,

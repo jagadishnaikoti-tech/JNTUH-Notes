@@ -1,21 +1,21 @@
 // ---------------------------------------------------------------------------
 // End-to-end ingestion -> admin review -> promotion, against the REAL Firestore
-// emulator, the REAL two-database layout and both real rulesets.
+// emulator, the REAL two-project layout and both real rulesets.
 //
 // It drives the whole local workflow with synthetic data only:
 //
 //   1. stage  : the collector's real write path (planRun + executeRun through the
 //               allowlisted Admin SDK store) writes one `ingestItems` document
-//               into the `staging` database;
+//               into the `jntuh-notes-staging` project;
 //   2. review : the admin client (src/lib/ingest.js) retrieves it from staging,
 //               ignores it and returns it to the queue;
 //   3. promote: promotion creates exactly one unverified DRAFT alert in the
-//               PUBLIC `(default)` database, and a repeat adds no second alert;
+//               production project, and a repeat adds no second alert;
 //   4. safety : nothing is auto-published, no draft is publicly readable, and no
-//               staging collection ever appears in `(default)`.
+//               staging collection ever appears in the production project.
 //
-// The project id is a `demo-` id on purpose: firebase-tools refuses to talk to a
-// real project for `demo-*` ids, so this suite can never touch live data.
+// The project ids are `demo-` ids on purpose: firebase-tools refuses to talk to
+// a real project for `demo-*` ids, so this suite can never touch live data.
 //
 // Run with `npm run test:rules` (wrapped in `firebase emulators:exec`).
 // ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ import { createIngestStore } from "../../lib/firestoreAdmin.mjs";
 import { executeRun, itemIdsForSources, planRun } from "../../write.mjs";
 import {
   DEFAULT_DATABASE,
-  STAGING_DATABASE,
+  STAGING_PROJECT,
   clearDatabase,
   emulatorEndpoint,
   loadRules,
@@ -56,7 +56,7 @@ const PROJECT_ID = "demo-jntuh-notes";
 const { host, port } = emulatorEndpoint();
 const EMULATOR_HOST = `${host}:${port}`;
 
-const STAGING = { projectId: PROJECT_ID, databaseId: STAGING_DATABASE, host, port };
+const STAGING = { projectId: STAGING_PROJECT, databaseId: DEFAULT_DATABASE, host, port };
 const DEFAULTS = { projectId: PROJECT_ID, databaseId: DEFAULT_DATABASE, host, port };
 
 const ADMIN_ACTOR = "admin@jntuh.example";
@@ -91,7 +91,7 @@ after(async () => {
   await Promise.all([staging.cleanup(), defaults.cleanup()]);
 });
 
-/** The admin ingest context: staging `db`, public `alertsDb`. */
+/** The admin ingest context: staging `db`, production `alertsDb`. */
 const contextFor = (db = staging.admin, alertsDb = defaults.admin) => ({
   context: { db, alertsDb, sdk: firestoreSdk },
 });
@@ -99,9 +99,9 @@ const contextFor = (db = staging.admin, alertsDb = defaults.admin) => ({
 /** The collector's allowlisted Admin SDK store, pointed at the emulator. */
 function makeStore() {
   return createIngestStore({
-    projectId: PROJECT_ID,
+    projectId: STAGING_PROJECT,
     emulator: true,
-    allowedProjects: [PROJECT_ID],
+    allowedProjects: [STAGING_PROJECT],
     // Only the emulator host is supplied so the collector's own project check
     // cannot be tripped by an ambient GOOGLE_CLOUD_PROJECT / GCLOUD_PROJECT.
     env: { FIRESTORE_EMULATOR_HOST: EMULATOR_HOST },
@@ -168,7 +168,7 @@ async function stageNotice(store) {
     trigger: "manual",
     actor: "e2e-test",
     dryRun: false,
-    projectId: PROJECT_ID,
+    projectId: STAGING_PROJECT,
     databaseId: store.databaseId,
     maxItems: 10,
   });
@@ -178,20 +178,20 @@ async function stageNotice(store) {
   return { runId, itemId: [...ids][0] };
 }
 
-/** The review state of a staged item, read from the STAGING database. */
+/** The review state of a staged item, read from the STAGING project. */
 async function reviewStateOf(itemId) {
   const data = await staging.get([INGEST_COLLECTIONS.ITEMS, itemId]);
   return data?.reviewState;
 }
 
-describe("collector staging -> admin review -> promotion (real rules, two databases, emulator only)", () => {
-  it("stages a notice in staging, reviews it, and promotes exactly one private unverified draft into (default)", async () => {
+describe("collector staging -> admin review -> promotion (real rules, two projects, emulator only)", () => {
+  it("stages a notice in staging, reviews it, and promotes exactly one private unverified draft into production", async () => {
     const store = makeStore();
     try {
       const { itemId, runId } = await stageNotice(store);
 
       // The collector wrote the item plus its run/health audit documents, all
-      // in the staging database.
+      // in the staging project.
       const stagedItem = await staging.get([INGEST_COLLECTIONS.ITEMS, itemId]);
       assert.ok(stagedItem, "the synthetic notice was staged");
       assert.equal(stagedItem.reviewState, REVIEW_STATE.NEW);
@@ -199,10 +199,10 @@ describe("collector staging -> admin review -> promotion (real rules, two databa
       assert.ok(await staging.get([INGEST_COLLECTIONS.RUNS, runId]), "the collector run document was written");
       assert.ok(await staging.get([INGEST_COLLECTIONS.HEALTH, SOURCE_ID]), "the source-health document was written");
 
-      // Staging must never create an alert - in staging or in (default).
+      // Staging must never create an alert - in staging or in production.
       assert.equal(await staging.count("alerts"), 0, "staging never creates an alert in staging");
-      assert.equal(await defaults.count("alerts"), 0, "staging never creates an alert in (default)");
-      // ...and no staging collection may appear in the public database.
+      assert.equal(await defaults.count("alerts"), 0, "staging never creates an alert in production");
+      // ...and no staging collection may appear in the production project.
       assert.equal(await defaults.count(INGEST_COLLECTIONS.ITEMS), 0);
       assert.equal(await defaults.count(INGEST_COLLECTIONS.RUNS), 0);
       assert.equal(await defaults.count(INGEST_COLLECTIONS.HEALTH), 0);
@@ -220,7 +220,7 @@ describe("collector staging -> admin review -> promotion (real rules, two databa
       await returnIngestItemToReview({ itemId }, contextFor());
       assert.equal(await reviewStateOf(itemId), REVIEW_STATE.NEW);
 
-      // Promote -> exactly one draft, in (default), linked from the staging item.
+      // Promote -> exactly one draft, in production, linked from the staging item.
       const first = await promoteIngestItem(
         { itemId, input: PROMOTION_INPUT, actor: ADMIN_ACTOR },
         contextFor()
@@ -236,7 +236,7 @@ describe("collector staging -> admin review -> promotion (real rules, two databa
       assert.equal(second.created, false);
       assert.equal(second.alertId, first.alertId);
 
-      assert.equal(await defaults.count("alerts"), 1, "promotion created exactly one alert, in (default)");
+      assert.equal(await defaults.count("alerts"), 1, "promotion created exactly one alert, in production");
       assert.equal(await staging.count("alerts"), 0, "the alert was not written to staging");
 
       const alertData = await defaults.get(["alerts", first.alertId]);

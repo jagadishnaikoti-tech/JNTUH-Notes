@@ -25,38 +25,48 @@ export const MAX_READ_SIZE = 300;
  * The one Firebase project this collector is allowed to write to. A write run
  * refuses to start if `--project` names anything else (fail closed).
  */
-export const INTENDED_PROJECT_ID = "jntuh-notes-6ef74";
+export const STAGING_PROJECT_ID = "jntuh-notes-staging";
 
 /**
- * The named Firestore database this collector stages into. The public `alerts`
- * collection lives in `(default)`, so staging is isolated in its own database -
- * that gives the collector credential a *database-level* boundary that cannot
- * reach public data (Google Cloud IAM cannot be scoped to a collection; see
- * ../SECURITY.md). There is deliberately NO fallback to `(default)`: an unknown
- * or missing database id is a hard error, never a silent public-database write.
+ * The production Firebase project. The collector must never receive credentials
+ * for it, and every collector path refuses it explicitly even if a caller asks.
  */
-export const STAGING_DATABASE_ID = "staging";
+export const PRODUCTION_PROJECT_ID = "jntuh-notes-6ef74";
 
-/** Firestore's reserved id for the primary database - never a staging target. */
-export const DEFAULT_DATABASE_ID = "(default)";
+/**
+ * Alias kept for call sites that mean "the project this collector is intended
+ * for". It is the STAGING project, never production.
+ */
+export const INTENDED_PROJECT_ID = STAGING_PROJECT_ID;
+
+/**
+ * The staging project's primary Firestore database. Staging is isolated by
+ * PROJECT, not by a named database: the collector credential has IAM only on
+ * `jntuh-notes-staging`, so it cannot reach the public `alerts` collection in
+ * `jntuh-notes-6ef74` even though both projects use `(default)`.
+ *
+ * The id is still pinned in code: `resolveDatabaseId()` accepts only
+ * `(default)`, so a typo cannot silently target a named database in the staging
+ * project.
+ */
+export const STAGING_DATABASE_ID = "(default)";
 
 /**
  * Validate a Firestore database id for the collector. The collector is pinned to
- * exactly one database, so this returns `STAGING_DATABASE_ID` or throws: an
- * empty value, `(default)`, or any other named database is a hard configuration
- * error. That is the whole point - there is no path by which a missing or wrong
- * value could silently reach the public database.
+ * the staging project's primary database, so this returns
+ * `STAGING_DATABASE_ID` or throws. Named databases are refused; the project
+ * boundary (not the database name) is what keeps production unreachable.
  */
 export function resolveDatabaseId(requested = STAGING_DATABASE_ID) {
   const id = String(requested ?? "").trim();
   if (!id) {
     throw new Error(
-      `A staging database id is required: the collector writes only to "${STAGING_DATABASE_ID}" (never "${DEFAULT_DATABASE_ID}").`
+      `A database id is required: the collector writes only to "${STAGING_DATABASE_ID}" in the staging project "${STAGING_PROJECT_ID}".`
     );
   }
   if (id !== STAGING_DATABASE_ID) {
     throw new Error(
-      `Refusing Firestore database "${id}": the collector is pinned to "${STAGING_DATABASE_ID}" and never writes to "${DEFAULT_DATABASE_ID}".`
+      `Refusing Firestore database "${id}": the collector is pinned to "${STAGING_DATABASE_ID}" in the staging project "${STAGING_PROJECT_ID}" (staging is isolated by project, not by database name).`
     );
   }
   return id;

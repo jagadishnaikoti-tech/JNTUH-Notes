@@ -1,17 +1,16 @@
 // ---------------------------------------------------------------------------
-// Firestore security-rules tests for the PUBLIC `(default)` database
-// (firestore.rules).
+// Firestore security-rules tests for the PRODUCTION project's `(default)`
+// database (firestore.rules).
 //
 // `(default)` holds alerts, analyticsEvents, channels, settings and users. The
-// collector's staging collections live in the separate `staging` database with
-// their own ruleset, `firestore.staging.rules` - this file proves they are
-// ABSENT here and therefore denied to every client, including an admin. The
-// staging rules themselves are covered by ./staging.rules.test.mjs.
+// collector's staging collections live in the separate `jntuh-notes-staging`
+// project with their own ruleset, `firestore.staging.rules` - this file proves
+// they are ABSENT here and therefore denied to every client, including an
+// admin. The staging rules themselves are covered by ./staging.rules.test.mjs.
 //
 // These run against the Firebase Emulator Suite, never against production. The
 // project id is a `demo-` id on purpose: firebase-tools refuses to talk to a
-// real project for `demo-*` ids, so this suite can never touch the live
-// database even by accident.
+// real project for `demo-*` ids, so this suite can never touch live data.
 //
 // Run with:
 //   npm run test:rules
@@ -109,25 +108,25 @@ const HEALTH_PATH = ["ingestSourceHealth", "notifications"];
 const HEALTH_DOC = { sourceId: "notifications", status: "ok", consecutiveFailures: 0 };
 
 // ---------------------------------------------------------------------------
-// The staging collections must NOT work in `(default)`.
+// The staging collections must NOT work in the production project.
 //
-// They were removed from firestore.rules when staging moved to its own
-// database. Because the ruleset no longer mentions them, Firestore's
-// default-deny applies: an anonymous visitor, a signed-in non-admin AND an
-// administrator are all refused. That is deliberate - a client that forgets the
-// named database fails loudly here instead of silently reading or writing
-// staging data in the public database.
+// They were removed from firestore.rules when staging moved to its own project.
+// Because the ruleset no longer mentions them, Firestore's default-deny applies:
+// an anonymous visitor, a signed-in non-admin AND an administrator are all
+// refused. That is deliberate - a client that forgets the separate staging
+// project fails loudly here instead of silently reading or writing staging data
+// in production.
 // ---------------------------------------------------------------------------
 
-describe("staging collections are absent from the (default) database", () => {
+describe("staging collections are absent from the production project", () => {
   for (const [label, pathSegments, data] of [
     ["ingestItems", ITEM_PATH, ITEM_DOC],
     ["ingestRuns", RUN_PATH, RUN_DOC],
     ["ingestSourceHealth", HEALTH_PATH, HEALTH_DOC],
   ]) {
-    it(`denies every client access to ${label} in (default)`, async () => {
+    it(`denies every client access to ${label} in production`, async () => {
       // Seed through the Admin SDK, exactly like the collector would if it
-      // were (wrongly) pointed at (default).
+      // were (wrongly) pointed at the production project.
       await seed(pathSegments, data);
 
       // Nobody may read it here...

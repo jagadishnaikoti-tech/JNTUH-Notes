@@ -3,12 +3,13 @@ import { test } from "node:test";
 
 import {
   BROKEN_AFTER_FAILURES,
-  INTENDED_PROJECT_ID,
   MAX_BATCH_SIZE,
+  PRODUCTION_PROJECT_ID,
   RUN_STATUS,
   SOURCE_OUTCOME,
   SOURCE_STATUS,
   STAGING_COLLECTION_NAMES,
+  STAGING_PROJECT_ID,
   alreadyApplied,
   buildRunDocument,
   chunkOperations,
@@ -45,8 +46,10 @@ test("isStagingCollection only accepts the three staging collections", () => {
   assert.ok(!isStagingCollection("ingestitems"));
 });
 
-test("INTENDED_PROJECT_ID is set", () => {
-  assert.ok(INTENDED_PROJECT_ID);
+test("the staging and production projects are distinct and named", () => {
+  assert.equal(STAGING_PROJECT_ID, "jntuh-notes-staging");
+  assert.equal(PRODUCTION_PROJECT_ID, "jntuh-notes-6ef74");
+  assert.notEqual(STAGING_PROJECT_ID, PRODUCTION_PROJECT_ID);
 });
 
 test("alreadyApplied detects re-use of the same runId", () => {
@@ -127,7 +130,7 @@ test("buildRunDocument produces a valid start and final document", () => {
     runId: "r1",
     status: RUN_STATUS.RUNNING,
     startedAt: started,
-    projectId: INTENDED_PROJECT_ID,
+    projectId: STAGING_PROJECT_ID,
     mode: "write",
   });
   assert.equal(startedDoc.status, RUN_STATUS.RUNNING);
@@ -141,7 +144,7 @@ test("buildRunDocument produces a valid start and final document", () => {
     status: RUN_STATUS.OK,
     startedAt: started,
     finishedAt: finished,
-    projectId: INTENDED_PROJECT_ID,
+    projectId: STAGING_PROJECT_ID,
     mode: "write",
     sources: [{ sourceId: "exams", outcome: SOURCE_OUTCOME.OK }],
     counts: { ...emptyCounts(), operations: 5, batches: 1 },
