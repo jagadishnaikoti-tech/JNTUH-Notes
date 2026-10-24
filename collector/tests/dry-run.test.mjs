@@ -92,7 +92,7 @@ test("--help explains that the default mode is read-only", async () => {
   const { code, stdout } = await run(["--help"]);
   assert.equal(code, 0);
   assert.match(stdout, /Dry run \(no writes\) unless --write is given/);
-  assert.match(stdout, /production writes require both/i);
+  assert.match(stdout, /live writes require both/i);
   assert.match(stdout, /--allow-production/);
   assert.match(stdout, /--emulator/);
 });

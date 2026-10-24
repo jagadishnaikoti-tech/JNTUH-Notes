@@ -4,24 +4,34 @@
 // Everything else in the collector that needs Firestore is dependency-injected.
 // This file is responsible for:
 //   - accepting only the three staging collection names;
+//   - connecting ONLY to the `jntuh-notes-staging` project (never production);
 //   - reading documents by id in chunks (<=300) with retry;
 //   - writing at most 400 operations per batch, retrying only transient errors;
 //   - respecting Application Default Credentials, emulator mode and project
 //     verification (fail closed);
 //   - never reading or writing the public alert collection.
+//
+// Isolation is by PROJECT: the collector credential is scoped by IAM to
+// `jntuh-notes-staging`, and `createIngestStore` refuses the production project
+// `jntuh-notes-6ef74` before it creates an app or reads a credential. The
+// database is pinned to the staging project's `(default)` database so a typo
+// cannot target a named database. There is NO fallback path.
 // ---------------------------------------------------------------------------
 
 import { applicationDefault, deleteApp, getApp, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 import {
-  INTENDED_PROJECT_ID,
   MAX_BATCH_SIZE,
   MAX_READ_SIZE,
+  PRODUCTION_PROJECT_ID,
   STAGING_COLLECTIONS,
   STAGING_COLLECTION_NAMES,
+  STAGING_DATABASE_ID,
+  STAGING_PROJECT_ID,
   chunkOperations,
   isStagingCollection,
+  resolveDatabaseId,
 } from "./runReport.mjs";
 
 export const APP_NAME = "jntuh-collector";
@@ -106,19 +116,62 @@ export async function retryWithBackoff(fn, {
 
 /**
  * Decide whether the requested project is acceptable. The collector only ever
- * writes to the intended project (fail closed). The `allowed` set must include
- * `INTENDED_PROJECT_ID`; it is parametrised purely to keep this function testable.
+ * writes to the staging project (fail closed). The production project is
+ * refused unconditionally, even if a caller injects it into `allowed`; the
+ * `allowed` set is parametrised only to keep the function testable.
  */
-export function resolveProjectId({ requested = "", env = {}, allowed = [INTENDED_PROJECT_ID] } = {}) {
+export function resolveProjectId({
+  requested = "",
+  env = {},
+  allowed = [STAGING_PROJECT_ID],
+} = {}) {
   const wanted = String(requested ?? "").trim();
-  if (!wanted) return { ok: false, reason: "no project requested", allowed, wanted: "" };
-  const allowedSet = Array.isArray(allowed) ? allowed.map(String) : [];
-  if (allowedSet.length > 0 && !allowedSet.includes(wanted)) {
-    return { ok: false, reason: `unknown project "${wanted}" (expected ${allowedSet.join(" or ")})`, allowed: allowedSet, wanted };
+  const allowedSet = (Array.isArray(allowed) ? allowed : [])
+    .map(String)
+    .filter((id) => id !== PRODUCTION_PROJECT_ID);
+
+  if (!wanted) {
+    return { ok: false, reason: "no project requested", allowed: allowedSet, wanted: "" };
   }
+
+  // The production project is never a collector target. Refuse it before the
+  // allowlist so a misconfigured/injected allowlist cannot widen the boundary.
+  if (wanted === PRODUCTION_PROJECT_ID) {
+    return {
+      ok: false,
+      reason: `refusing the production project "${PRODUCTION_PROJECT_ID}": the collector writes only to the staging project "${STAGING_PROJECT_ID}"`,
+      allowed: allowedSet,
+      wanted,
+    };
+  }
+
+  if (!allowedSet.includes(wanted)) {
+    return {
+      ok: false,
+      reason: `unknown project "${wanted}" (expected ${allowedSet.join(" or ") || STAGING_PROJECT_ID})`,
+      allowed: allowedSet,
+      wanted,
+    };
+  }
+
   const environment = String(env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || env.FIREBASE_PROJECT_ID || "").trim();
+  if (environment === PRODUCTION_PROJECT_ID) {
+    return {
+      ok: false,
+      reason: `refusing the production environment "${environment}": the collector writes only to the staging project "${STAGING_PROJECT_ID}"`,
+      allowed: allowedSet,
+      wanted,
+      environment,
+    };
+  }
   if (environment && environment !== wanted) {
-    return { ok: false, reason: `project mismatch: --project is "${wanted}" but the environment targets "${environment}"`, allowed: allowedSet, wanted, environment };
+    return {
+      ok: false,
+      reason: `project mismatch: --project is "${wanted}" but the environment targets "${environment}"`,
+      allowed: allowedSet,
+      wanted,
+      environment,
+    };
   }
   return { ok: true, allowed: allowedSet, wanted, environment: environment || null };
 }
@@ -141,21 +194,27 @@ function assertCollection(collection) {
 /** Create the narrow-store used by the collector. This is the only place that touches firebase-admin. */
 export function createIngestStore({
   projectId,
+  databaseId = STAGING_DATABASE_ID,
   emulator = false,
   app = null,
   quiet = false,
   env = process.env,
-  allowedProjects = [INTENDED_PROJECT_ID],
+  allowedProjects = [STAGING_PROJECT_ID],
 } = {}) {
   const resolved = resolveProjectId({ requested: projectId, env, allowed: allowedProjects });
   if (!resolved.ok) throw new Error(resolved.reason);
+
+  // Fail closed on the database too: only the staging project's primary
+  // database is acceptable. Named databases are refused rather than silently
+  // targeted by a typo.
+  const resolvedDatabaseId = resolveDatabaseId(databaseId);
 
   if (emulator) {
     const parsed = parseEmulatorHost(env);
     if (!parsed.ok) throw new Error(parsed.reason);
   } else {
     if (String(env.FIRESTORE_EMULATOR_HOST ?? "").trim()) {
-      throw new Error("refusing a production store while FIRESTORE_EMULATOR_HOST is set");
+      throw new Error("refusing a live store while FIRESTORE_EMULATOR_HOST is set");
     }
   }
 
@@ -171,7 +230,9 @@ export function createIngestStore({
     );
   }
 
-  const db = getFirestore(firebaseApp);
+  // The database id is passed explicitly. It is the staging project's
+  // `(default)` database; the project, not the database name, is the boundary.
+  const db = getFirestore(firebaseApp, resolvedDatabaseId);
   try {
     db.settings({ ignoreUndefinedProperties: true });
   } catch (error) {
@@ -184,6 +245,10 @@ export function createIngestStore({
 
   if (firebaseApp.options.projectId !== requestedProject) {
     throw new Error(`project id mismatch after initialisation (requested "${requestedProject}", got "${firebaseApp.options.projectId}")`);
+  }
+
+  if (db.databaseId && db.databaseId !== resolvedDatabaseId) {
+    throw new Error(`database id mismatch after initialisation (requested "${resolvedDatabaseId}", got "${db.databaseId}")`);
   }
 
   async function readStaging(collection, ids) {
@@ -259,7 +324,8 @@ export function createIngestStore({
 
   return {
     projectId: requestedProject,
-    mode: emulator ? "emulator" : "production",
+    databaseId: resolvedDatabaseId,
+    mode: emulator ? "emulator" : "live",
     isEmulator: emulator,
     db,
     firebaseApp,

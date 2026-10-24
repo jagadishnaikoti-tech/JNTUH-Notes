@@ -5,13 +5,27 @@
 //   ingestRuns         one document per collector run ("what happened?")
 //   ingestSourceHealth one document per official source (last attempt / success)
 //
+// STAGING LIVES IN ITS OWN FIREBASE PROJECT (`jntuh-notes-staging`). Those
+// three collections are read and written in that project's `(default)`
+// database, never in the production project `jntuh-notes-6ef74`. The public
+// `alerts` collection - and every other app collection - stays in production.
+// This module therefore opens TWO Firebase apps: the production app for
+// `alerts` and a dedicated staging app for the ingest collections. A Firebase
+// Auth token is scoped to one project, so each app has its own session; the
+// staging session is established by adminAuth.js (best-effort at login, with an
+// explicit "connect staging" fallback on /admin/ingest). Nothing here can read
+// or write `alerts` through the staging handle, and nothing can read or write
+// the ingest collections through the production handle: the two rulesets
+// (firestore.staging.rules / firestore.rules) deny each other's collections,
+// and the two projects have separate credentials/IAM. See collector/SECURITY.md.
+//
 // This module is the ONLY frontend code that talks to those collections, the
 // same way lib/alerts.js owns `alerts/{id}` and lib/channels.js owns its
-// collection. It reuses the single Firebase bootstrap in lib/firebase.js and
-// the existing admin authorization (custom claim `admin == true`) enforced in
-// firestore.rules - it never creates a second Firebase instance, never imports
-// the Firebase Admin SDK, and never touches `firebase/firestore` directly (the SDK is
-// loaded on demand so public visitors never download it).
+// collection. It reuses the Firebase bootstrap in lib/firebase.js and the
+// existing admin authorization (custom claim `admin == true`) enforced in the
+// rules - it never imports the Firebase Admin SDK and never touches
+// `firebase/firestore` directly (the SDK is loaded on demand so public visitors
+// never download it).
 //
 // What this module deliberately does NOT do:
 //   * it never verifies or publishes an alert (that stays exclusive to
@@ -20,18 +34,25 @@
 //     carries only what an administrator typed plus the real notice metadata
 //     the collector recorded.
 //
-// Promotion is ATOMIC. `promoteIngestItem()` runs one Firestore transaction
-// that (1) reads the staged item, (2) returns the existing alert id if the item
-// was already promoted, otherwise (3) validates the admin form, (4) creates the
-// alert draft and (5) updates the staged item's review fields - all in a single
-// commit, so an item can never produce two alerts even under concurrent clicks.
+// Promotion spans two projects, and Firestore has no cross-project
+// transaction, so `promoteIngestItem()` is two steps that are each safe to
+// retry: (1) create the alert DRAFT in the production project with a
+// deterministic id and only if that document does not already exist, then
+// (2) claim the staged item in the staging project inside a transaction. A
+// notice can therefore never produce two alerts, an existing alert is never
+// overwritten, and an interruption between the steps leaves the item
+// re-promotable (the retry finds the draft it already made and finishes the
+// claim) - it can never strand or duplicate a notice.
 //
 // Testability: every function accepts an optional final `deps` argument whose
-// `context` supplies `{ db, sdk, app }`. Production callers omit it and the
-// real Firebase instance is used; tests inject fakes or an emulator instance.
+// `context` supplies `{ db, sdk, app, stagingApp?, alertsDb? }`. Production
+// callers omit it and the real Firebase instances are used; tests inject fakes
+// or emulator instances. When an injected context has no `alertsDb`, the alert
+// write falls back to `db` so single-project fakes stay simple; production
+// contexts always provide both.
 // ---------------------------------------------------------------------------
 
-import { getFirebaseApp, loadFirestore, loadAuth } from "./firebase.js";
+import { getFirebaseApp, getStagingApp, loadFirestore, loadAuth } from "./firebase.js";
 import {
   ALERT_COLLECTION,
   ALERT_STATUS,
@@ -39,12 +60,42 @@ import {
   cleanAlert,
 } from "./alerts.js";
 
-/** Staging collection names. They must match firestore.rules and the collector. */
+/** Staging collection names. They must match firestore.staging.rules and the collector. */
 export const INGEST_COLLECTIONS = Object.freeze({
   ITEMS: "ingestItems",
   RUNS: "ingestRuns",
   HEALTH: "ingestSourceHealth",
 });
+
+/**
+ * The staging Firebase project. The collector's ingest collections live in
+ * this project's `(default)` database. The PROJECT - enforced by IAM, by the
+ * separate rulesets and by the separate Auth session - is the isolation
+ * boundary, not a database name. Must match collector/lib/runReport.mjs.
+ */
+export const STAGING_PROJECT_ID = "jntuh-notes-staging";
+
+/**
+ * The staging project's primary database. Kept as a constant for callers and
+ * tests that want to assert the handle; `resolveContext()` always uses the
+ * default database of the staging app.
+ */
+export const STAGING_DATABASE_ID = "(default)";
+
+/**
+ * The alert document id a promotion derives from a staged notice id. It is
+ * deterministic on purpose: retrying a promotion targets the same document, so
+ * a second alert can never be created for one notice even if the two steps
+ * (create draft, claim item) are split by a failure.
+ */
+export function promotionAlertId(itemId) {
+  const clean = String(itemId || "").trim();
+  if (!clean) throw new Error("A staged notice id is required.");
+  // Firestore document ids cannot contain "/"; keep the id short (the rules cap
+  // `promotedAlertId` at 200 characters).
+  const safe = clean.replace(/\//g, "_").slice(0, 180);
+  return `ingest-${safe}`;
+}
 
 /** The only review states the rules allow on a staged item. */
 export const REVIEW_STATE = Object.freeze({
@@ -98,18 +149,43 @@ function userError(err, message) {
 }
 
 /**
- * Resolve the Firestore context. Production callers get the real instance;
- * tests inject `{ context: { db, sdk, app } }`.
+ * Resolve the Firestore context. Production callers get two apps/handles; tests
+ * inject `{ context: { db, sdk, app, stagingApp?, alertsDb? } }`.
+ *
+ *   db        - the staging project: the ingest* collections
+ *   alertsDb  - the production project: the public alerts collection
  */
 async function resolveContext(deps) {
   if (deps && deps.context) return deps.context;
-  const app = await getFirebaseApp();
+  const [app, stagingApp] = await Promise.all([getFirebaseApp(), getStagingApp()]);
   if (!app) throw new Error("Firebase is not configured for this deployment.");
+  if (!stagingApp) {
+    throw new Error(
+      "The staging project is not configured for this deployment. Set VITE_STAGING_FIREBASE_* to the jntuh-notes-staging web config."
+    );
+  }
   const sdk = await loadFirestore();
-  return { app, sdk, db: sdk.getFirestore(app) };
+  return {
+    app,
+    stagingApp,
+    sdk,
+    db: sdk.getFirestore(stagingApp), // staging project, (default)
+    alertsDb: sdk.getFirestore(app), // production project, (default)
+  };
 }
 
-/** The administrator handle written to review fields (`promotedBy`). */
+/** The database that holds the public `alerts` collection. */
+function resolveAlertsDb(ctx) {
+  // Real callers always get `alertsDb` from resolveContext(); injected test
+  // contexts may opt into a single project by leaving it undefined.
+  return ctx.alertsDb || ctx.db;
+}
+
+/**
+ * The administrator handle written to review fields (`promotedBy`). It is read
+ * from the PRODUCTION app, where the reviewer signed in; the staging app has
+ * its own session, but the production identity is the authoritative actor.
+ */
 async function resolveActor(ctx, actor) {
   const given = cleanText(actor, MAX_ACTOR);
   if (given) return given;
@@ -507,19 +583,29 @@ export async function returnIngestItemToReview({ itemId } = {}, deps = {}) {
 }
 
 /**
- * Admin: promote a staged notice into an alert DRAFT - atomically and once.
+ * Admin: promote a staged notice into an alert DRAFT - once, and never twice.
  *
- * The whole operation is a single Firestore transaction:
- *   1. read ingestItems/{itemId}                  (admin-only read)
- *   2. if it already has an alert id, return that  (idempotent - no second alert)
- *   3. otherwise validate `input`                 (cleanAlert, existing rules)
- *   4. create the alert draft                     (buildAlertDocument)
- *   5. set reviewState/promotedAlertId/At/By      (the four permitted fields)
- *   6. commit both writes together
+ * The public `alerts` collection lives in the production project while the
+ * staged notice lives in the staging project, and Firestore offers no
+ * cross-project transaction, so the operation is two steps that are each
+ * individually safe to retry:
  *
- * Reads happen before writes inside the callback, as Firestore requires. The
- * alert document id is generated before the transaction and reused across any
- * SDK retries, so a retry can never create a second alert.
+ *   1. read ingestItems/{itemId} in staging      (admin-only read)
+ *   2. if it already has an alert id, return that (idempotent - no second alert)
+ *   3. validate `input`                          (cleanAlert, existing rules)
+ *   4. create alerts/{deterministicId} in production ONLY IF IT DOES NOT EXIST
+ *   5. claim the item in a staging transaction (mark promoted + link the id)
+ *
+ * Safety properties that survive the split:
+ *   * the alert id is derived from the item id, so a retry always targets the
+ *     same document and a notice can never fork two alerts;
+ *   * step 4 never overwrites an existing alert, so an admin edit made between
+ *     a failure and a retry can never be clobbered;
+ *   * a failure after step 4 but before step 5 leaves the item un-promoted, and
+ *     re-promoting finds the draft already there (step 4 is a no-op) and simply
+ *     finishes step 5 - the notice is never stranded and never duplicated;
+ *   * a concurrent double-click resolves through step 5's transaction: the
+ *     loser sees the winner's id and keeps it.
  *
  * The created alert is a plain draft: `status: "draft"`, `verifiedAt: null`,
  * `verifiedBy: ""`. It is never verified or published here.
@@ -530,7 +616,8 @@ export async function promoteIngestItem(
 ) {
   if (!itemId) throw new Error("A staged notice id is required.");
   const ctx = await resolveContext(deps);
-  const { doc, collection, runTransaction, serverTimestamp } = ctx.sdk;
+  const { doc, getDoc, runTransaction, serverTimestamp } = ctx.sdk;
+  const alertsDb = resolveAlertsDb(ctx);
 
   const who = await resolveActor(ctx, actor);
   if (!who) {
@@ -540,62 +627,91 @@ export async function promoteIngestItem(
   }
 
   const itemRef = doc(ctx.db, INGEST_COLLECTIONS.ITEMS, itemId);
-  const alertRef = doc(collection(ctx.db, ALERT_COLLECTION));
 
   let result;
   try {
-    result = await runTransaction(ctx.db, async (tx) => {
-      const snap = await tx.get(itemRef);
-      if (!snap.exists()) {
+    // 1 + 2. Read the staged item first. A repeat promotion must write nothing
+    // at all, not even a conflicting draft, so the already-promoted check runs
+    // before any validation or write.
+    const snap = await getDoc(itemRef);
+    if (!snap.exists()) {
+      const missing = new Error(
+        "This staged notice no longer exists. Refresh the list and try again."
+      );
+      missing.code = "not-found";
+      throw missing;
+    }
+
+    const item = snap.data() || {};
+
+    // Keyed on `promotedAlertId` (the alert that actually exists) rather than
+    // on `reviewState`, so a document whose state drifted - an inconsistent
+    // legacy/out-of-band `ignored` or `new` that still carries promotion
+    // metadata - can never create a second alert or overwrite the first.
+    if (item.promotedAlertId) {
+      result = {
+        alertId: item.promotedAlertId,
+        created: false,
+        reviewState: item.reviewState || REVIEW_STATE.PROMOTED,
+        promotedAt: item.promotedAt || null,
+        promotedBy: cleanText(item.promotedBy, MAX_ACTOR),
+      };
+      return { itemId, ...result };
+    }
+
+    // 3. Validate only when we are actually going to write, so re-submitting an
+    // already-promoted item stays a harmless no-op even if the form changed.
+    const fields = cleanAlert(input);
+    if (fields.status === ALERT_STATUS.PUBLISHED) {
+      throw new Error(
+        "Promotion creates a draft. Verify and publish it from Alert Radar afterwards."
+      );
+    }
+
+    const alertId = promotionAlertId(itemId);
+    const alertDocRef = doc(alertsDb, ALERT_COLLECTION, alertId);
+
+    // 4. Create the draft in the PUBLIC database, but only if that exact
+    // document does not already exist. Making this a transaction on the alerts
+    // database gives an atomic create-if-absent, so even two concurrent
+    // promotions produce exactly one draft and exactly one `created: true`.
+    const created = await runTransaction(alertsDb, async (tx) => {
+      const existing = await tx.get(alertDocRef);
+      if (existing.exists()) return false;
+      tx.set(alertDocRef, buildAlertDocument(fields, who, serverTimestamp));
+      return true;
+    });
+
+    // 5. Claim the notice in the STAGING database. Re-reading inside the
+    // transaction keeps the claim safe against a concurrent promotion: the
+    // loser keeps the winner's alert id instead of overwriting it.
+    const claimed = await runTransaction(ctx.db, async (tx) => {
+      const current = await tx.get(itemRef);
+      if (!current.exists()) {
         const missing = new Error(
           "This staged notice no longer exists. Refresh the list and try again."
         );
         missing.code = "not-found";
         throw missing;
       }
-
-      const item = snap.data() || {};
-
-      // Already promoted -> return the existing id and create nothing. Keyed on
-      // `promotedAlertId` (the alert that actually exists) rather than on
-      // `reviewState`, so a document whose state drifted - an inconsistent
-      // legacy/out-of-band `ignored` or `new` that still carries promotion
-      // metadata - can never create a second alert or overwrite the first.
-      if (item.promotedAlertId) {
-        return {
-          alertId: item.promotedAlertId,
-          created: false,
-          reviewState: item.reviewState || REVIEW_STATE.PROMOTED,
-          promotedAt: item.promotedAt || null,
-          promotedBy: cleanText(item.promotedBy, MAX_ACTOR),
-        };
-      }
-
-      // Validate only when we are actually going to write, so re-submitting an
-      // already-promoted item stays a harmless no-op even if the form changed.
-      const fields = cleanAlert(input);
-      if (fields.status === ALERT_STATUS.PUBLISHED) {
-        throw new Error(
-          "Promotion creates a draft. Verify and publish it from Alert Radar afterwards."
-        );
-      }
-
-      tx.set(alertRef, buildAlertDocument(fields, who, serverTimestamp));
+      const data = current.data() || {};
+      if (data.promotedAlertId) return data.promotedAlertId;
       tx.update(itemRef, {
         reviewState: REVIEW_STATE.PROMOTED,
-        promotedAlertId: alertRef.id,
+        promotedAlertId: alertId,
         promotedAt: serverTimestamp(),
         promotedBy: who,
       });
-
-      return {
-        alertId: alertRef.id,
-        created: true,
-        reviewState: REVIEW_STATE.PROMOTED,
-        promotedAt: null,
-        promotedBy: who,
-      };
+      return alertId;
     });
+
+    result = {
+      alertId: claimed || alertId,
+      created,
+      reviewState: REVIEW_STATE.PROMOTED,
+      promotedAt: null,
+      promotedBy: who,
+    };
   } catch (err) {
     if (isNotFoundError(err)) {
       throw userError(err, "This staged notice no longer exists. Refresh the list.");
@@ -603,7 +719,7 @@ export async function promoteIngestItem(
     if (isPermissionError(err)) {
       throw userError(
         err,
-        "Permission denied. Confirm your account has the admin claim and the Firestore rules are deployed."
+        "Permission denied. Confirm your account has the admin claim and the Firestore rules are deployed for both projects."
       );
     }
     // Validation and other explicit messages pass through unchanged.

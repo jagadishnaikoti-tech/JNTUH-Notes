@@ -1,10 +1,16 @@
 // ---------------------------------------------------------------------------
 // Firebase client bootstrap.
 //
-// Every value comes from Vite env vars (VITE_*). The Firebase *web* config is
-// public by design - it ships in the browser bundle and is not a secret. It is
-// still read from env so deployments can point at different projects and so
-// that no credentials ever live in source control.
+// Two Firebase projects are used:
+//   * the production app (VITE_FIREBASE_*) - public site, `alerts`, users;
+//   * an optional staging app (VITE_STAGING_FIREBASE_*) - the collector's
+//     `ingestItems` / `ingestRuns` / `ingestSourceHealth` review data.
+//
+// A Firebase Auth session is scoped to one project, so staging is a second,
+// named Firebase app with its own sign-in. Both web configs are public by
+// design - they ship in the browser bundle and are not secrets. They are still
+// read from env so deployments can point at different projects and so that no
+// credentials ever live in source control.
 //
 // Performance: the Firebase SDK is imported dynamically, on demand. Public
 // visitors who never trigger an analytics write (or an admin route) never
@@ -24,24 +30,55 @@ export const firebaseConfig = {
   measurementId: env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-/** Whether a usable Firebase project is configured for this deployment. */
+export const stagingFirebaseConfig = {
+  apiKey: env.VITE_STAGING_FIREBASE_API_KEY,
+  authDomain: env.VITE_STAGING_FIREBASE_AUTH_DOMAIN,
+  projectId: env.VITE_STAGING_FIREBASE_PROJECT_ID,
+  storageBucket: env.VITE_STAGING_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_STAGING_FIREBASE_MESSAGING_SENDER_ID,
+  appId: env.VITE_STAGING_FIREBASE_APP_ID,
+};
+
+/**
+ * The only staging project this build may talk to. Hard-coded on purpose: a
+ * typo in VITE_STAGING_FIREBASE_PROJECT_ID must not silently point the admin
+ * review UI at production (or any other project).
+ */
+export const EXPECTED_STAGING_PROJECT_ID = "jntuh-notes-staging";
+
+/** Whether a usable production Firebase project is configured. */
 export const isFirebaseConfigured = Boolean(
   firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId
 );
 
+/**
+ * Whether the optional staging project is configured *and* points at the
+ * expected project. A mismatch is treated as "not configured" (fail closed).
+ */
+export const isStagingConfigured =
+  Boolean(
+    stagingFirebaseConfig.apiKey &&
+      stagingFirebaseConfig.projectId &&
+      stagingFirebaseConfig.appId
+  ) && stagingFirebaseConfig.projectId === EXPECTED_STAGING_PROJECT_ID;
+
+const DEFAULT_APP_NAME = "[DEFAULT]";
+const STAGING_APP_NAME = "jntuh-staging";
+
 let appPromise = null;
 
 /**
- * Initialised Firebase app, or null when unconfigured/unavailable. Cached as a
- * promise so concurrent callers share one initializeApp() call.
+ * Initialised production Firebase app, or null when unconfigured/unavailable.
+ * Cached as a promise so concurrent callers share one initializeApp() call.
  */
 export function getFirebaseApp() {
   if (!isFirebaseConfigured) return Promise.resolve(null);
   if (!appPromise) {
     appPromise = import("firebase/app")
-      .then(({ initializeApp, getApp, getApps }) =>
-        getApps().length ? getApp() : initializeApp(firebaseConfig)
-      )
+      .then(({ initializeApp, getApps }) => {
+        const existing = getApps().find((app) => app.name === DEFAULT_APP_NAME);
+        return existing || initializeApp(firebaseConfig);
+      })
       .catch((err) => {
         // Never let a bad config take the whole site down.
         console.warn("[firebase] initialisation failed:", err);
@@ -49,6 +86,38 @@ export function getFirebaseApp() {
       });
   }
   return appPromise;
+}
+
+let stagingAppPromise = null;
+
+/**
+ * Initialised staging Firebase app, or null when unconfigured/unavailable.
+ * It is a named app so it can coexist with the production default app.
+ */
+export function getStagingApp() {
+  if (!isStagingConfigured) {
+    if (
+      stagingFirebaseConfig.projectId &&
+      stagingFirebaseConfig.projectId !== EXPECTED_STAGING_PROJECT_ID
+    ) {
+      console.warn(
+        `[firebase] refusing unexpected staging project "${stagingFirebaseConfig.projectId}" (expected "${EXPECTED_STAGING_PROJECT_ID}")`
+      );
+    }
+    return Promise.resolve(null);
+  }
+  if (!stagingAppPromise) {
+    stagingAppPromise = import("firebase/app")
+      .then(({ initializeApp, getApps }) => {
+        const existing = getApps().find((app) => app.name === STAGING_APP_NAME);
+        return existing || initializeApp(stagingFirebaseConfig, STAGING_APP_NAME);
+      })
+      .catch((err) => {
+        console.warn("[firebase] staging initialisation failed:", err);
+        return null;
+      });
+  }
+  return stagingAppPromise;
 }
 
 // --- Lazy SDK loaders -------------------------------------------------------
@@ -87,7 +156,7 @@ export async function loadAnalytics() {
   }
 }
 
-/** Convenience: an initialised Firestore instance, or null. */
+/** Convenience: an initialised production Firestore instance, or null. */
 export async function getFirestoreDb() {
   const app = await getFirebaseApp();
   if (!app) return null;

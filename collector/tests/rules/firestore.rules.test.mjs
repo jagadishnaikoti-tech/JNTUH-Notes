@@ -1,10 +1,16 @@
 // ---------------------------------------------------------------------------
-// Firestore security-rules tests for the Phase 2 staging collections.
+// Firestore security-rules tests for the PRODUCTION project's `(default)`
+// database (firestore.rules).
+//
+// `(default)` holds alerts, analyticsEvents, channels, settings and users. The
+// collector's staging collections live in the separate `jntuh-notes-staging`
+// project with their own ruleset, `firestore.staging.rules` - this file proves
+// they are ABSENT here and therefore denied to every client, including an
+// admin. The staging rules themselves are covered by ./staging.rules.test.mjs.
 //
 // These run against the Firebase Emulator Suite, never against production. The
 // project id is a `demo-` id on purpose: firebase-tools refuses to talk to a
-// real project for `demo-*` ids, so this suite can never touch the live
-// database even by accident.
+// real project for `demo-*` ids, so this suite can never touch live data.
 //
 // Run with:
 //   npm run test:rules
@@ -101,168 +107,37 @@ const RUN_DOC = { runId: "run-1", status: "ok", dryRun: false, startedAt: new Da
 const HEALTH_PATH = ["ingestSourceHealth", "notifications"];
 const HEALTH_DOC = { sourceId: "notifications", status: "ok", consecutiveFailures: 0 };
 
-describe("staging collections are invisible to everyone but admins", () => {
-  it("anonymous users cannot read ingestItems", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(getDoc(doc(anon(), ...ITEM_PATH)));
-  });
+// ---------------------------------------------------------------------------
+// The staging collections must NOT work in the production project.
+//
+// They were removed from firestore.rules when staging moved to its own project.
+// Because the ruleset no longer mentions them, Firestore's default-deny applies:
+// an anonymous visitor, a signed-in non-admin AND an administrator are all
+// refused. That is deliberate - a client that forgets the separate staging
+// project fails loudly here instead of silently reading or writing staging data
+// in production.
+// ---------------------------------------------------------------------------
 
-  it("authenticated non-admins cannot read ingestItems", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(getDoc(doc(nonAdmin(), ...ITEM_PATH)));
-  });
-
-  it("admins can read ingestItems", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertSucceeds(getDoc(doc(admin(), ...ITEM_PATH)));
-  });
-
-  it("anonymous and non-admin users cannot read ingestRuns", async () => {
-    await seed(RUN_PATH, RUN_DOC);
-    await assertFails(getDoc(doc(anon(), ...RUN_PATH)));
-    await assertFails(getDoc(doc(nonAdmin(), ...RUN_PATH)));
-  });
-
-  it("admins can read ingestRuns", async () => {
-    await seed(RUN_PATH, RUN_DOC);
-    await assertSucceeds(getDoc(doc(admin(), ...RUN_PATH)));
-  });
-
-  it("anonymous and non-admin users cannot read ingestSourceHealth", async () => {
-    await seed(HEALTH_PATH, HEALTH_DOC);
-    await assertFails(getDoc(doc(anon(), ...HEALTH_PATH)));
-    await assertFails(getDoc(doc(nonAdmin(), ...HEALTH_PATH)));
-  });
-
-  it("admins can read ingestSourceHealth", async () => {
-    await seed(HEALTH_PATH, HEALTH_DOC);
-    await assertSucceeds(getDoc(doc(admin(), ...HEALTH_PATH)));
-  });
-});
-
-describe("ingestItems: creation is collector-only", () => {
-  it("admins cannot create an ingestion item from client code", async () => {
-    await assertFails(setDoc(doc(admin(), "ingestItems", "new-item"), ITEM_DOC));
-  });
-
-  it("anonymous users cannot create an ingestion item", async () => {
-    await assertFails(setDoc(doc(anon(), "ingestItems", "new-item"), ITEM_DOC));
-  });
-});
-
-describe("ingestItems: review-state updates", () => {
-  it("admins can move an item to ignored", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertSucceeds(updateDoc(doc(admin(), ...ITEM_PATH), { reviewState: "ignored" }));
-  });
-
-  it("admins can promote an item with complete metadata", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertSucceeds(
-      updateDoc(doc(admin(), ...ITEM_PATH), {
-        reviewState: "promoted",
-        promotedAlertId: "alert-9",
-        promotedAt: new Date(),
-        promotedBy: "admin@jntuh.example",
-      }),
-    );
-  });
-
-  it("promoting without metadata is rejected", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { reviewState: "promoted" }));
-  });
-
-  it("promoting with a malformed alert id is rejected", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(
-      updateDoc(doc(admin(), ...ITEM_PATH), {
-        reviewState: "promoted",
-        promotedAlertId: "",
-        promotedAt: new Date(),
-        promotedBy: "admin@jntuh.example",
-      }),
-    );
-  });
-
-  it("promoting with a non-timestamp promotedAt is rejected", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(
-      updateDoc(doc(admin(), ...ITEM_PATH), {
-        reviewState: "promoted",
-        promotedAlertId: "alert-9",
-        promotedAt: "2026-10-17",
-        promotedBy: "admin@jntuh.example",
-      }),
-    );
-  });
-
-  it("an unknown review state is rejected", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { reviewState: "archived" }));
-  });
-
-  it("admins cannot change protected notice fields", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { title: "Rewritten" }));
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { canonicalUrl: "https://evil.example/x" }));
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { contentHash: "deadbeef" }));
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { sourceId: "exams" }));
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { firstSeenAt: new Date() }));
-  });
-
-  it("a review update that also smuggles a protected field is rejected", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(
-      updateDoc(doc(admin(), ...ITEM_PATH), { reviewState: "ignored", title: "Rewritten" }),
-    );
-  });
-
-  it("non-admins cannot update an item", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(updateDoc(doc(nonAdmin(), ...ITEM_PATH), { reviewState: "ignored" }));
-  });
-
-  it("anonymous users cannot update an item", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(updateDoc(doc(anon(), ...ITEM_PATH), { reviewState: "ignored" }));
-  });
-
-  it("admins cannot delete an item", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(deleteDoc(doc(admin(), ...ITEM_PATH)));
-  });
-
-  it("non-admins cannot delete an item", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(deleteDoc(doc(nonAdmin(), ...ITEM_PATH)));
-  });
-});
-
-describe("ingestRuns and ingestSourceHealth are read-only to clients", () => {
+describe("staging collections are absent from the production project", () => {
   for (const [label, pathSegments, data] of [
+    ["ingestItems", ITEM_PATH, ITEM_DOC],
     ["ingestRuns", RUN_PATH, RUN_DOC],
     ["ingestSourceHealth", HEALTH_PATH, HEALTH_DOC],
   ]) {
-    it(`admins cannot create/update/delete ${label}`, async () => {
+    it(`denies every client access to ${label} in production`, async () => {
+      // Seed through the Admin SDK, exactly like the collector would if it
+      // were (wrongly) pointed at the production project.
       await seed(pathSegments, data);
+
+      // Nobody may read it here...
+      await assertFails(getDoc(doc(anon(), ...pathSegments)));
+      await assertFails(getDoc(doc(nonAdmin(), ...pathSegments)));
+      await assertFails(getDoc(doc(admin(), ...pathSegments)));
+
+      // ...and even an administrator may not write it here.
       await assertFails(setDoc(doc(admin(), label, "brand-new"), data));
-      await assertFails(updateDoc(doc(admin(), ...pathSegments), { status: "failed" }));
+      await assertFails(updateDoc(doc(admin(), ...pathSegments), { reviewState: "ignored" }));
       await assertFails(deleteDoc(doc(admin(), ...pathSegments)));
-    });
-
-    it(`non-admins cannot write ${label}`, async () => {
-      await seed(pathSegments, data);
-      await assertFails(setDoc(doc(nonAdmin(), label, "brand-new"), data));
-      await assertFails(updateDoc(doc(nonAdmin(), ...pathSegments), { status: "failed" }));
-      await assertFails(deleteDoc(doc(nonAdmin(), ...pathSegments)));
-    });
-
-    it(`anonymous users cannot write ${label}`, async () => {
-      await seed(pathSegments, data);
-      await assertFails(setDoc(doc(anon(), label, "brand-new"), data));
-      await assertFails(updateDoc(doc(anon(), ...pathSegments), { status: "failed" }));
-      await assertFails(deleteDoc(doc(anon(), ...pathSegments)));
     });
   }
 });

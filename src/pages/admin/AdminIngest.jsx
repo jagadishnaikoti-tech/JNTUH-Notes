@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAdmin } from "../../components/admin/AdminAuthContext.jsx";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -36,6 +37,12 @@ import {
   returnIngestItemToReview,
 } from "../../lib/ingest.js";
 import { cleanAlert } from "../../lib/alerts.js";
+import {
+  friendlyAuthError,
+  observeStagingAuth,
+  signInToStaging,
+  signOutStaging,
+} from "../../lib/adminAuth.js";
 import {
   ALERT_CATEGORIES,
   ALERT_CATEGORY_IDS,
@@ -153,6 +160,13 @@ export default function AdminIngest() {
   const [busyId, setBusyId] = useState(null);
   const [flash, setFlash] = useState(null);
 
+  const { user: productionUser } = useAdmin();
+  const [stagingAuth, setStagingAuth] = useState({ status: "loading", user: null });
+  const [stagingEmail, setStagingEmail] = useState("");
+  const [stagingPassword, setStagingPassword] = useState("");
+  const [stagingSubmitting, setStagingSubmitting] = useState(false);
+  const [stagingFormError, setStagingFormError] = useState("");
+
   async function loadItems({ reset = true } = {}) {
     if (reset) {
       setItemsLoading(true);
@@ -206,11 +220,50 @@ export default function AdminIngest() {
     loadMeta();
   }
 
+  async function connectStaging(event) {
+    event.preventDefault();
+    setStagingFormError("");
+    if (!stagingEmail.trim() || !stagingPassword) {
+      setStagingFormError("Enter the staging administrator email and password.");
+      return;
+    }
+    setStagingSubmitting(true);
+    try {
+      await signInToStaging(stagingEmail, stagingPassword);
+      // observeStagingAuth() updates the status; clear the secret immediately.
+      setStagingPassword("");
+    } catch (err) {
+      setStagingFormError(
+        err?.code ? friendlyAuthError(err) : err?.message || friendlyAuthError(err)
+      );
+    } finally {
+      setStagingSubmitting(false);
+    }
+  }
+
   useEffect(() => {
+    // Review data lives in the staging project, so it can only load once the
+    // administrator has an admin session THERE. A production session is not
+    // enough: Firebase Auth tokens are scoped to one project.
+    if (stagingAuth.status !== "admin") return;
     loadItems({ reset: true });
     loadMeta();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stagingAuth.status]);
+
+  useEffect(() => {
+    const unsubscribe = observeStagingAuth((next) => {
+      setStagingAuth(next);
+      if (next.user?.email) setStagingEmail((prev) => prev || next.user.email);
+    });
+    return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (productionUser?.email) {
+      setStagingEmail((prev) => prev || productionUser.email);
+    }
+  }, [productionUser]);
 
   const sourceOptions = useMemo(
     () => ingestSourceOptions(items),
@@ -368,6 +421,22 @@ export default function AdminIngest() {
     () => health.filter((h) => h.status === "broken" || h.status === "degraded"),
     [health]
   );
+
+  if (stagingAuth.status !== "admin") {
+    return (
+      <StagingConnect
+        status={stagingAuth.status}
+        email={stagingEmail}
+        onEmail={setStagingEmail}
+        password={stagingPassword}
+        onPassword={setStagingPassword}
+        submitting={stagingSubmitting}
+        error={stagingFormError}
+        onSubmit={connectStaging}
+        onDisconnect={signOutStaging}
+      />
+    );
+  }
 
   return (
     <div className="admin-stack">
@@ -991,15 +1060,126 @@ export default function AdminIngest() {
       </Panel>
 
       <p className="admin-methodology">
-        Staged notices live in the Firestore <code>ingestItems</code> collection;
-        run reports and source health live in <code>ingestRuns</code> and{" "}
-        <code>ingestSourceHealth</code>. Only administrators may read them, and
-        only the review fields (<code>reviewState</code>,{" "}
-        <code>promotedAlertId</code>, <code>promotedAt</code>,{" "}
-        <code>promotedBy</code>) may be changed from the browser. Promotion
-        creates a private draft in a single transaction and never creates a
-        duplicate; nothing is verified or published here. {ALERT_DISCLAIMER}
+        Staged notices live in the <code>jntuh-notes-staging</code> Firebase
+        project's <code>ingestItems</code> collection; run reports and source
+        health live in <code>ingestRuns</code> and{" "}
+        <code>ingestSourceHealth</code> there. Only administrators with that
+        project's <code>admin</code> claim may read them, and only the review
+        fields (<code>reviewState</code>, <code>promotedAlertId</code>,{" "}
+        <code>promotedAt</code>, <code>promotedBy</code>) may be changed from the
+        browser. Promotion creates a private draft in the production project,
+        once and never as a duplicate; nothing is verified or published here.{" "}
+        {ALERT_DISCLAIMER}
       </p>
+    </div>
+  );
+}
+
+// --- staging project connection ---------------------------------------------
+
+/**
+ * A Firebase Auth session is scoped to one project, so the staging project needs
+ * its own sign-in. Production login attempts this automatically; this panel is
+ * the explicit fallback (and the explanation when staging is not configured).
+ */
+function StagingConnect({
+  status,
+  email,
+  onEmail,
+  password,
+  onPassword,
+  submitting,
+  error,
+  onSubmit,
+  onDisconnect,
+}) {
+  if (status === "unconfigured") {
+    return (
+      <div className="admin-stack">
+        <Panel title="Staging project not configured">
+          <p className="admin-subtext">
+            Collected notices are stored in the separate Firebase project{" "}
+            <code>jntuh-notes-staging</code>, not in this site's production
+            project. Set the <code>VITE_STAGING_FIREBASE_*</code> environment
+            variables (see <code>.env.example</code>) and redeploy to enable this
+            page. The collector is unaffected; it continues to stage notices.
+          </p>
+        </Panel>
+      </div>
+    );
+  }
+
+  const forbidden = status === "forbidden";
+
+  return (
+    <div className="admin-stack">
+      <Panel
+        title={forbidden ? "Staging access denied" : "Connect the staging project"}
+        subtitle="A Firebase session is scoped to one project. Sign in to the staging project to review collected notices."
+      >
+        <form className="admin-alerts-form" onSubmit={onSubmit} noValidate>
+          {forbidden && (
+            <p className="admin-form-error" role="alert">
+              This account is signed in to the staging project but does not have
+              the <code>admin</code> claim there. Grant the claim in{" "}
+              <code>jntuh-notes-staging</code>, or sign in with a staging
+              administrator account.
+            </p>
+          )}
+          {status === "unavailable" && (
+            <p className="admin-form-error" role="alert">
+              Could not reach the staging project. Check your connection and
+              reload this page.
+            </p>
+          )}
+          {error && (
+            <p className="admin-form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <label className="admin-field admin-field-wide">
+            <span className="admin-field-label">Administrator email</span>
+            <input
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(event) => onEmail(event.target.value)}
+              disabled={submitting}
+              required
+            />
+          </label>
+          <label className="admin-field admin-field-wide">
+            <span className="admin-field-label">Password</span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => onPassword(event.target.value)}
+              disabled={submitting}
+              required
+            />
+          </label>
+          <div className="admin-form-actions">
+            <button type="submit" className="admin-primary" disabled={submitting}>
+              {submitting ? "Connecting…" : "Connect staging"}
+            </button>
+            {forbidden && (
+              <button
+                type="button"
+                className="admin-ghost"
+                onClick={onDisconnect}
+                disabled={submitting}
+              >
+                Use a different account
+              </button>
+            )}
+          </div>
+          <p className="admin-subtext">
+            The staging project has its own Firestore rules and its own{" "}
+            <code>admin</code> claim. This page never stores your credentials.
+          </p>
+        </form>
+      </Panel>
     </div>
   );
 }

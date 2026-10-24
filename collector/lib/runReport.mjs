@@ -25,7 +25,52 @@ export const MAX_READ_SIZE = 300;
  * The one Firebase project this collector is allowed to write to. A write run
  * refuses to start if `--project` names anything else (fail closed).
  */
-export const INTENDED_PROJECT_ID = "jntuh-notes-6ef74";
+export const STAGING_PROJECT_ID = "jntuh-notes-staging";
+
+/**
+ * The production Firebase project. The collector must never receive credentials
+ * for it, and every collector path refuses it explicitly even if a caller asks.
+ */
+export const PRODUCTION_PROJECT_ID = "jntuh-notes-6ef74";
+
+/**
+ * Alias kept for call sites that mean "the project this collector is intended
+ * for". It is the STAGING project, never production.
+ */
+export const INTENDED_PROJECT_ID = STAGING_PROJECT_ID;
+
+/**
+ * The staging project's primary Firestore database. Staging is isolated by
+ * PROJECT, not by a named database: the collector credential has IAM only on
+ * `jntuh-notes-staging`, so it cannot reach the public `alerts` collection in
+ * `jntuh-notes-6ef74` even though both projects use `(default)`.
+ *
+ * The id is still pinned in code: `resolveDatabaseId()` accepts only
+ * `(default)`, so a typo cannot silently target a named database in the staging
+ * project.
+ */
+export const STAGING_DATABASE_ID = "(default)";
+
+/**
+ * Validate a Firestore database id for the collector. The collector is pinned to
+ * the staging project's primary database, so this returns
+ * `STAGING_DATABASE_ID` or throws. Named databases are refused; the project
+ * boundary (not the database name) is what keeps production unreachable.
+ */
+export function resolveDatabaseId(requested = STAGING_DATABASE_ID) {
+  const id = String(requested ?? "").trim();
+  if (!id) {
+    throw new Error(
+      `A database id is required: the collector writes only to "${STAGING_DATABASE_ID}" in the staging project "${STAGING_PROJECT_ID}".`
+    );
+  }
+  if (id !== STAGING_DATABASE_ID) {
+    throw new Error(
+      `Refusing Firestore database "${id}": the collector is pinned to "${STAGING_DATABASE_ID}" in the staging project "${STAGING_PROJECT_ID}" (staging is isolated by project, not by database name).`
+    );
+  }
+  return id;
+}
 
 /**
  * The ONLY collections the collector may touch. The public alert collection is
@@ -288,6 +333,7 @@ export function buildRunDocument({
   collectorVersion = "unknown",
   dryRun = true,
   projectId = "",
+  databaseId = "",
   mode = "dry-run",
   error = null,
   sources = [],
@@ -308,6 +354,7 @@ export function buildRunDocument({
     collectorVersion: String(collectorVersion ?? "unknown").slice(0, 40),
     dryRun: Boolean(dryRun),
     projectId: String(projectId ?? "").slice(0, 80),
+    databaseId: String(databaseId ?? "").slice(0, 80),
     mode: String(mode ?? "").slice(0, 20),
     startedAt: started,
     finishedAt: finished,

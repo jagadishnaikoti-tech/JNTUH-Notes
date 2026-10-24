@@ -22,6 +22,8 @@ import {
 import {
   INGEST_COLLECTIONS,
   REVIEW_FILTER_ALL,
+  STAGING_DATABASE_ID,
+  STAGING_PROJECT_ID,
   countIngestStates,
   fetchIngestItems,
   fetchIngestRuns,
@@ -33,6 +35,7 @@ import {
   normaliseIngestRun,
   normaliseSourceHealth,
   promoteIngestItem,
+  promotionAlertId,
   redactErrorText,
   returnIngestItemToReview,
 } from "../src/lib/ingest.js";
@@ -51,8 +54,12 @@ function makeFake(options = {}) {
     ingestRuns: { ...(options.runs || {}) },
     ingestSourceHealth: { ...(options.health || {}) },
   };
-  const log = { sets: [], updates: [], transactions: 0, queries: [] };
+  const log = { sets: [], updates: [], transactions: 0, queries: [], txnDbs: [] };
   const db = { permissionDenied: Boolean(options.permissionDenied) };
+  // A distinct handle standing in for the production `(default)` database, so tests
+  // can prove the alert draft is written there while the item lives in the
+  // staging project.
+  const alertsDb = { kind: "alerts-db", permissionDenied: Boolean(options.permissionDenied) };
   // Simulates a Firestore write/commit failure in both `updateDoc` and
   // `runTransaction` (the transaction rejects before applying any staged write).
   const failUpdate = Boolean(options.failUpdate);
@@ -71,7 +78,7 @@ function makeFake(options = {}) {
 
   const sdk = {
     serverTimestamp: () => ({ __ts: true }),
-    getFirestore: () => db,
+    getFirestore: (arg) => arg || db,
 
     collection: (_db, path) => ({ kind: "collection", path }),
     doc: (a, b, c) => {
@@ -131,6 +138,7 @@ function makeFake(options = {}) {
     async runTransaction(_db, update) {
       if (db.permissionDenied) throw denied();
       log.transactions += 1;
+      log.txnDbs.push(_db);
       const staged = { sets: [], updates: [] };
       const tx = {
         async get(ref) {
@@ -166,7 +174,7 @@ function makeFake(options = {}) {
     },
   };
 
-  return { sdk, context: { db, sdk }, stores, log };
+  return { sdk, context: { db, alertsDb, sdk }, stores, log };
 }
 
 const ITEM_ID = "item-1";
@@ -520,7 +528,7 @@ describe("ingestion run counts", () => {
 // --- promotion --------------------------------------------------------------
 
 describe("promotion into an alert draft", () => {
-  it("creates exactly one draft and updates the item inside one transaction", async () => {
+  it("creates exactly one draft (in the alerts DB) and claims the item in staging", async () => {
     const { context, stores, log } = makeFake(freshItem());
     const result = await promoteIngestItem(
       { itemId: ITEM_ID, input: VALID_INPUT, actor: "admin@x" },
@@ -528,9 +536,14 @@ describe("promotion into an alert draft", () => {
     );
 
     assert.equal(result.created, true);
-    assert.equal(log.transactions, 1);
+    // Two steps, two projects: the draft is created in the production alerts
+    // database, then the staged item is claimed in the staging project. There is
+    // no cross-project transaction, so these are necessarily two commits.
+    assert.equal(log.transactions, 2);
+    assert.equal(log.txnDbs[0], context.alertsDb, "the draft is written to the production alerts DB");
+    assert.equal(log.txnDbs[1], context.db, "the item is claimed in the staging project");
 
-    // Both writes happened inside the transaction.
+    // Both writes happened inside a transaction.
     assert.equal(log.sets.length, 1);
     assert.equal(log.sets[0].txn, true);
     assert.equal(log.updates.length, 1);
@@ -646,6 +659,34 @@ describe("promotion into an alert draft", () => {
       () => promoteIngestItem({ itemId: "missing", input: VALID_INPUT, actor: "admin@x" }, { context }),
       (err) => err.code === "not-found" && /no longer exists/i.test(err.message)
     );
+  });
+
+  it("names the alert after the item so a retry can never fork a second draft", async () => {
+    const expected = promotionAlertId(ITEM_ID);
+    assert.equal(expected, "ingest-item-1");
+
+    const { context, stores, log } = makeFake(freshItem());
+    const first = await promoteIngestItem(
+      { itemId: ITEM_ID, input: VALID_INPUT, actor: "admin@x" },
+      { context }
+    );
+    const retry = await promoteIngestItem(
+      { itemId: ITEM_ID, input: VALID_INPUT, actor: "admin@x" },
+      { context }
+    );
+
+    assert.equal(first.alertId, expected);
+    assert.equal(retry.alertId, expected);
+    assert.equal(log.sets[0].path, `alerts/${expected}`);
+    assert.deepEqual(Object.keys(stores.alerts), [expected]);
+  });
+
+  it("pins staging to its own project and primary database", () => {
+    assert.equal(STAGING_PROJECT_ID, "jntuh-notes-staging");
+    assert.equal(STAGING_DATABASE_ID, "(default)");
+    assert.throws(() => promotionAlertId(""), /id is required/i);
+    // A path separator can never leak into a document id.
+    assert.equal(promotionAlertId("a/b"), "ingest-a_b");
   });
 });
 

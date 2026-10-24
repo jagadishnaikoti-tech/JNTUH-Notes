@@ -22,8 +22,13 @@ import {
   resolveRunPlanFromEnv,
 } from "../lib/runPolicy.mjs";
 import { explainUnexpectedArguments, runScheduled } from "../scheduledRun.mjs";
+import {
+  PRODUCTION_PROJECT_ID,
+  STAGING_DATABASE_ID,
+  STAGING_PROJECT_ID,
+} from "../lib/runReport.mjs";
 
-const PROJECT = "jntuh-notes-6ef74";
+const PROJECT = STAGING_PROJECT_ID;
 
 /** A fully-approved staging input, so each test only varies one thing. */
 const approvedStage = {
@@ -37,7 +42,7 @@ const approvedStage = {
 /** Every `--flag` present in argv, in order. */
 const flagsOf = (argv) => argv.filter((token) => String(token).startsWith("--"));
 
-test("a bare run is a dry run and emits no write or production flag", () => {
+test("a bare run is a dry run and emits no write or live-write flag", () => {
   for (const input of [{}, { mode: undefined }, { mode: "" }, { mode: "dry-run" }, { mode: "DRY-RUN" }]) {
     const plan = resolveRunPlan(input);
     assert.equal(plan.ok, true);
@@ -87,7 +92,7 @@ test("staging is refused unless the switch is exactly the string \"true\"", () =
     "no",
     "off",
     false,
-    // Near-misses: a production write path must fail closed on all of these.
+    // Near-misses: a live staging write path must fail closed on all of these.
     true,
     "TRUE",
     "True",
@@ -137,12 +142,18 @@ test("an approved staging run emits exactly the staging argv", () => {
   assert.match(plan.summary, /never publishes/);
 });
 
-test("staging refused for a foreign or unknown project", () => {
-  for (const projectId of ["demo-jntuh-notes", "some-other-project", "", undefined]) {
+test("staging refused for a foreign project, including production", () => {
+  for (const projectId of [PRODUCTION_PROJECT_ID, "demo-jntuh-notes", "some-other-project", "", undefined]) {
     const plan = resolveRunPlan({ ...approvedStage, projectId });
     assert.equal(plan.ok, false, `project ${JSON.stringify(projectId)} must be refused`);
+    assert.deepEqual(plan.argv, []);
   }
-  assert.match(resolveRunPlan({ ...approvedStage, projectId: "evil" }).reason, /expected jntuh-notes-6ef74/);
+
+  const production = resolveRunPlan({ ...approvedStage, projectId: PRODUCTION_PROJECT_ID });
+  assert.match(production.reason, /production/);
+
+  const foreign = resolveRunPlan({ ...approvedStage, projectId: "evil" });
+  assert.match(foreign.reason, /expected jntuh-notes-staging/);
 });
 
 test("staging is refused while a Firestore emulator host is set", () => {
@@ -240,6 +251,7 @@ test("resolveRunPlanFromEnv maps the documented environment keys", () => {
     COLLECTOR_MODE: "stage",
     COLLECTOR_STAGING_ENABLED: "true",
     COLLECTOR_PROJECT_ID: PROJECT,
+    COLLECTOR_DATABASE_ID: "(default)",
     COLLECTOR_MAX_ITEMS: "7",
     COLLECTOR_OFFLINE_DIR: "fixtures",
     COLLECTOR_SOURCES: "notifications,exams",
@@ -253,6 +265,7 @@ test("resolveRunPlanFromEnv maps the documented environment keys", () => {
     mode: "stage",
     stagingEnabled: "true",
     projectId: PROJECT,
+    databaseId: "(default)",
     credentialPath: "/tmp/sa.json",
     emulatorHost: "",
     maxItems: "7",
@@ -278,6 +291,47 @@ test("an empty environment schedules a dry run, not a write", () => {
   const plan = resolveRunPlan(resolveRunPlanFromEnv({}));
   assert.equal(plan.ok, true);
   assert.equal(plan.writes, false);
+  assert.deepEqual(plan.argv, []);
+});
+
+test("a staging run is pinned to the staging project's (default) database", () => {
+  const plan = resolveRunPlan(approvedStage);
+  assert.equal(plan.ok, true);
+  assert.equal(plan.projectId, STAGING_PROJECT_ID);
+  assert.equal(plan.databaseId, STAGING_DATABASE_ID);
+  assert.equal(STAGING_DATABASE_ID, "(default)");
+  assert.match(plan.summary, /jntuh-notes-staging\/\(default\)/);
+  // The pinned database is not a flag, so a caller can never redirect it.
+  assert.ok(!plan.argv.some((token) => String(token).includes("(default)")));
+  assert.ok(!plan.argv.includes("--database"));
+  assert.equal(ALLOWED_FLAGS.includes("--database"), false);
+});
+
+test("a runner that names any other database is refused (fail closed)", () => {
+  for (const databaseId of ["staging", "default", "prod", "alerts"]) {
+    const plan = resolveRunPlan({ ...approvedStage, databaseId });
+    assert.equal(plan.ok, false, `expected database "${databaseId}" to be refused`);
+    assert.match(plan.reason, /database/);
+    assert.deepEqual(plan.argv, []);
+  }
+});
+
+test("an unset COLLECTOR_DATABASE_ID keeps the pinned (default) database", () => {
+  for (const databaseId of [undefined, null, "", "  ", "(default)"]) {
+    const plan = resolveRunPlan({ ...approvedStage, databaseId });
+    assert.equal(plan.ok, true);
+    assert.equal(plan.databaseId, STAGING_DATABASE_ID);
+  }
+});
+
+test("production can never be staged to, even with the switch on", () => {
+  const plan = resolveRunPlan({
+    ...approvedStage,
+    projectId: PRODUCTION_PROJECT_ID,
+    stagingEnabled: "true",
+  });
+  assert.equal(plan.ok, false);
+  assert.match(plan.reason, /production/);
   assert.deepEqual(plan.argv, []);
 });
 

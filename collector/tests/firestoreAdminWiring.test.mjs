@@ -19,7 +19,7 @@ import { test } from "node:test";
 const EMULATOR_HOST = "127.0.0.1:8080";
 const EMULATOR_HOSTNAME = "127.0.0.1";
 const EMULATOR_PORT = 8080;
-const DEMO_PROJECT = "demo-jntuh-notes";
+const DEMO_PROJECT = "demo-jntuh-notes-staging";
 
 /** True when a TCP listener answers on the emulator port. */
 function emulatorReachable({ host = EMULATOR_HOSTNAME, port = EMULATOR_PORT, timeoutMs = 500 } = {}) {
@@ -39,8 +39,8 @@ function emulatorReachable({ host = EMULATOR_HOSTNAME, port = EMULATOR_PORT, tim
 
 /**
  * Build the real staging store against the local emulator and the demo
- * project. Never production: emulator mode only accepts a FIRESTORE_EMULATOR_HOST
- * and the demo project id is the sole allowed project.
+ * staging project. Never production: emulator mode only accepts a
+ * FIRESTORE_EMULATOR_HOST and the demo project id is the sole allowed project.
  */
 function makeEmulatorStore(createIngestStore) {
   return createIngestStore({
