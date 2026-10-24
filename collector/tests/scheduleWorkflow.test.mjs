@@ -141,6 +141,139 @@ test("the runner is invoked through the policy entry point, never with inline fl
   assert.ok(!/--emulator/.test(live), "the scheduled workflow never targets an emulator");
 });
 
+// Workflow-structure regression test (static/offline). Does NOT simulate a real
+// GitHub Actions auth failure or runner semantics; it asserts the YAML structure
+// would be fail-closed by default ordering/conditions.
+test("WIF authentication failure stops execution before the collector runs (workflow structure)", () => {
+  const lines = raw.split(/\r?\n/);
+  const liveLines = lines.filter((line) => !/^\s*#/.test(line));
+
+  // Auth must use google-github-actions/auth@v2 with OIDC (no fallback to secrets)
+  assert.match(live, /google-github-actions\/auth@v2/);
+  assert.ok(!/secrets\./.test(live), "no repository secrets used for auth");
+  assert.ok(!/FIREBASE_SERVICE_ACCOUNT/.test(raw), "no service account JSON secret");
+  assert.ok(
+    !/(?:echo|printf|cat)[^\n]*(?:GOOGLE_APPLICATION_CREDENTIALS|ACCESS_TOKEN|ID_TOKEN)/i.test(live),
+    "must not print credentials",
+  );
+
+  // Find job boundaries (best-effort indentation-based)
+  const jobStartIndices = [];
+  for (let i = 0; i < liveLines.length; i++) {
+    if (/^\s{2}[A-Za-z0-9_-]+:\s*$/.test(liveLines[i]) && /jobs:/.test(liveLines.slice(Math.max(0, i - 5), i).join("\n"))) {
+      // rough; find jobs block start
+    }
+  }
+  // Simpler: find collect job
+  const collectJobIdx = liveLines.findIndex((l) => /^\s{2}collect\s*:/.test(l));
+  assert.ok(collectJobIdx !== -1, "collect job must exist");
+  // Find next job at same indent level
+  let collectJobEnd = liveLines.length;
+  for (let i = collectJobIdx + 1; i < liveLines.length; i++) {
+    if (/^\s{2}[A-Za-z0-9_-]+:\s*$/.test(liveLines[i]) && !liveLines[i].includes("steps")) {
+      collectJobEnd = i;
+      break;
+    }
+  }
+  const collectJobLines = liveLines.slice(collectJobIdx, collectJobEnd);
+  const collectJobText = collectJobLines.join("\n");
+
+  // Identify specific steps
+  const authStepNameIdx = collectJobLines.findIndex((l) => /Authenticate to the staging project \(Workload Identity Federation\)/.test(l));
+  const authActionIdx = collectJobLines.findIndex((l) => /uses:\s*google-github-actions\/auth@v2/.test(l));
+  const collectorRunIdx = collectJobLines.findIndex((l) => /run:\s*node collector\/scheduledRun\.mjs/.test(l));
+  assert.ok(authStepNameIdx !== -1, "auth step name must exist in collect job");
+  assert.ok(authActionIdx !== -1, "auth action must exist in collect job");
+  assert.ok(collectorRunIdx !== -1, "collector run must exist in collect job");
+  // Ensure auth action is associated with auth step (nearby)
+  assert.ok(Math.abs(authActionIdx - authStepNameIdx) <= 10, "auth action must be in the same auth step");
+
+  // Auth must be stage-only and cannot be skipped for valid staging path
+  // Check auth step has if condition requiring stage+workflow_dispatch
+  let authIfLine = -1;
+  for (let i = Math.max(0, authStepNameIdx - 15); i <= authActionIdx; i++) {
+    if (/^\s*-\s*name:.*Authenticate/i.test(collectJobLines[i]) || i === authStepNameIdx) {
+      // scan forward from step start
+      for (let j = i; j <= Math.min(collectJobLines.length - 1, i + 20); j++) {
+        if (/^\s*if\s*:/.test(collectJobLines[j])) {
+          authIfLine = j;
+          break;
+        }
+      }
+      break;
+    }
+  }
+  assert.ok(authIfLine !== -1, "auth step must have an if condition");
+  const authIfText = collectJobLines[authIfLine];
+  assert.match(authIfText, /inputs\.mode\s*==\s*'stage'/, "auth if must require stage mode");
+  assert.match(authIfText, /github\.event_name\s*==\s*'workflow_dispatch'/, "auth if must require workflow_dispatch");
+  assert.ok(!/github\.event_name\s*==\s*'schedule'/.test(authIfText), "auth if must not allow schedule");
+
+  // Auth step must not use continue-on-error with any truthy YAML value
+  let authStepStart = authStepNameIdx;
+  if (authStepStart === -1) {
+    authStepStart = authActionIdx;
+    // look backwards for step start
+    for (let i = authStepStart; i >= Math.max(0, authStepStart - 20); i--) {
+      if (/^\s*-\s*(name:|uses:|run:)/.test(collectJobLines[i])) {
+        authStepStart = i;
+        break;
+      }
+    }
+  }
+  // scan this step's block
+  for (let i = authStepStart; i < Math.min(collectJobLines.length, authStepStart + 30); i++) {
+    const line = collectJobLines[i];
+    if (/^\s*-\s+(name:|uses:|run:|id:)/.test(line) && i !== authStepStart) break;
+    if (/^\s*continue-on-error\s*:/.test(line)) {
+      const val = line.split(':')[1] || '';
+      assert.ok(!/\b(true|yes|on)\b/i.test(val), "auth step must not have continue-on-error truthy");
+      assert.ok(!/^\s*true\s*$/i.test(val.trim()), "auth step must not have continue-on-error: true");
+    }
+  }
+
+  // Collector run must be after auth in same job
+  assert.ok(collectorRunIdx > authActionIdx, "collector must run after auth action in same job");
+  assert.ok(collectorRunIdx > authStepNameIdx, "collector must run after auth step in same job");
+
+  // Collector step must not bypass auth (no always/failure)
+  let collectorStepStart = collectorRunIdx;
+  for (let i = collectorRunIdx; i >= Math.max(0, collectorRunIdx - 15); i--) {
+    if (/^\s*-\s*(name:|uses:|run:)/.test(collectJobLines[i])) {
+      collectorStepStart = i;
+      break;
+    }
+  }
+  for (let i = collectorStepStart; i < Math.min(collectJobLines.length, collectorStepStart + 25); i++) {
+    const line = collectJobLines[i];
+    if (/^\s*-\s+(name:|uses:|run:|id:)/.test(line) && i !== collectorStepStart) break;
+    if (/^\s*if\s*:/.test(line)) {
+      assert.ok(!/always\(\)/.test(line), "collector step must not use if: always()");
+      assert.ok(!/failure\(\)/.test(line), "collector step must not use if: failure()");
+      // Must not be conditioned to run regardless of auth
+    }
+  }
+
+  // No duplicate/alternate collector invocations
+  const collectorRunMatches = collectJobText.match(/run:\s*node collector\/scheduledRun\.mjs/g) || [];
+  assert.equal(collectorRunMatches.length, 1, "exactly one collector invocation in collect job");
+
+  // Guards must precede auth and collector
+  const guardIdx = collectJobLines.findIndex((l) => /Guard - staging requires the owner-set repository variable/.test(l));
+  const saGuardIdx = collectJobLines.findIndex((l) => /Guard - Workload Identity Federation is configured/.test(l));
+  assert.ok(guardIdx !== -1 && saGuardIdx !== -1, "both staging guards must exist");
+  assert.ok(guardIdx < authStepNameIdx, "staging enabled guard must precede auth");
+  assert.ok(saGuardIdx < authStepNameIdx, "WIF config guard must precede auth");
+  assert.ok(guardIdx < collectorRunIdx, "staging enabled guard must precede collector");
+  assert.ok(saGuardIdx < collectorRunIdx, "WIF config guard must precede collector");
+
+  // Default dry-run and manual-only guarantees preserved
+  assert.match(raw, /default:\s*dry-run/, "default mode must be dry-run");
+  assert.match(live, /^\s*workflow_dispatch:/m);
+  assert.ok(!/^\s{0,4}schedule:/m.test(live), "no live schedule");
+  assert.ok(!/^\s*-\s*cron:/m.test(live), "no live cron");
+});
+
 test("two runs can never overlap", () => {
   assert.match(live, /concurrency:/);
   assert.match(live, /cancel-in-progress:\s*false/);
