@@ -13,11 +13,20 @@ original Drive URLs (see `src/data/resources.json` for the machine-readable tree
 
 | Metric | Value |
 | --- | --- |
-| Top-level resource folders | 60 |
+| Top-level catalog entries | 60 |
+| Unique top-level Drive folder IDs | 59 |
 | Nested sub-folders | 121 |
-| Individual files | 821 |
+| Indexed file entries | 821 |
+| Unique Drive file IDs | 803 |
 | Total size (reported by Google Drive) | 5.59 GB |
 | Files mirrored locally | 0 (linked to original Drive URLs by design — see note) |
+
+The generated catalog has **60 top-level entries** but **59 distinct Drive
+folder IDs**: the same BEFA folder is listed for two year groups. The 942 data
+rows in `RESOURCE_INVENTORY.csv` are the 821 indexed file entries plus 121
+nested-folder entries; they do not include the top-level catalog entries. The
+821 file entries contain 803 unique Drive file IDs, with 18 entries reused
+across folders.
 
 > Note on local copies: the user selected **"Link to Drive originals"**. Because the
 > reference site itself only ever links to Drive folders (never individual files), the

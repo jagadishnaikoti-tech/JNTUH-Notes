@@ -19,6 +19,7 @@ import {
   HOME_ALERTS_LIMIT,
   fetchLatestPublishedAlerts,
   fetchPublishedAlerts,
+  getPublishedAlertsViewState,
   readPublishedAlerts,
 } from "../src/lib/alerts.js";
 import {
@@ -81,6 +82,16 @@ const alert = (id, over = {}) => ({
 // --- the public read --------------------------------------------------------
 
 describe("public alert reads", () => {
+  it("covers loading, empty, and failed-read feed view states", () => {
+    assert.equal(getPublishedAlertsViewState({ loading: true }), "loading");
+    assert.equal(getPublishedAlertsViewState({ alerts: [] }), "empty");
+    assert.equal(getPublishedAlertsViewState({ error: true }), "error");
+    assert.equal(
+      getPublishedAlertsViewState({ alerts: [alert("a1")] }),
+      "ready"
+    );
+  });
+
   it("queries only the alerts collection for status == published", async () => {
     const { context, log } = makeFake([alert("a1")]);
     await readPublishedAlerts({ context });
@@ -164,6 +175,16 @@ describe("public alert reads", () => {
 
     assert.equal(result.error, true);
     assert.deepEqual(result.alerts, []);
+  });
+
+  it("exposes the failed-read outcome while the legacy list API stays an array", async () => {
+    const { context } = makeFake([], { failCode: "unavailable" });
+
+    assert.deepEqual(await readPublishedAlerts({ context }), {
+      alerts: [],
+      error: true,
+    });
+    assert.deepEqual(await fetchPublishedAlerts({ context }), []);
   });
 
   it("keeps fetchPublishedAlerts' always-an-array contract on failure", async () => {

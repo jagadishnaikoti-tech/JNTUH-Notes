@@ -108,57 +108,77 @@ zero notices is treated as a markup change and reported as an error.
 ## Write mode (staging)
 
 With `--write` the collector stages what it found in Firestore instead of just
-printing it. It writes **only** to admin-only staging collections:
+printing it. It writes **only** to admin-only staging collections in the separate
+**`jntuh-notes-staging`** Firebase project, in that project's `(default)`
+database:
 
-| Collection | One document per | Written by |
-| ---------- | ---------------- | ---------- |
-| `ingestItems` | staged notice (no `status`, no alert fields) | collector |
-| `ingestRuns` | collector run ("what happened?") | collector |
-| `ingestSourceHealth` | official source (last attempt / last success) | collector |
+| Collection | One document per | Written by | Project / database |
+| ---------- | ---------------- | ---------- | ------------------ |
+| `ingestItems` | staged notice (no `status`, no alert fields) | collector | `jntuh-notes-staging` / `(default)` |
+| `ingestRuns` | collector run ("what happened?") | collector | `jntuh-notes-staging` / `(default)` |
+| `ingestSourceHealth` | official source (last attempt / last success) | collector | `jntuh-notes-staging` / `(default)` |
 
-Write mode never touches the public `alerts` collection, and every staged notice
-is a plain record awaiting review — the collector can produce neither a verified
-nor a published alert.
+Write mode never touches the public `alerts` collection: it lives in the
+**production** project `jntuh-notes-6ef74`, where the collector's credential has
+no IAM roles at all, and every staged notice is a plain record awaiting review —
+the collector can produce neither a verified nor a published alert. The project
+and database ids are pinned in code (`STAGING_PROJECT_ID`, `STAGING_DATABASE_ID`,
+`resolveProjectId()`, `resolveDatabaseId()`); there is no flag or environment
+variable to redirect a write, production is refused unconditionally, and a wrong
+database id refuses the run instead of falling back. See [`SECURITY.md`](SECURITY.md)
+for why the project split exists and how IAM turns it into an enforced boundary.
 
 ### Write-mode options
 
 | Option | Default | Effect |
 | ------ | ------- | ------ |
 | `--write` | off | Enable staging writes. Requires `--project`. |
-| `--project <id>` | — | Must equal `jntuh-notes-6ef74`; any other id is refused (fail closed). |
+| `--project <id>` | — | Must equal `jntuh-notes-staging`; production and any other id are refused (fail closed). |
 | `--emulator` | off | Write to the local Firestore emulator. Requires `FIRESTORE_EMULATOR_HOST`; cannot be combined with `--allow-production`. |
-| `--allow-production` | off | Required for a real (non-emulator) write. Refused if `FIRESTORE_EMULATOR_HOST` is set. |
+| `--allow-production` | off | Live-write confirmation for the **staging** project only. It never enables a production write: `jntuh-notes-6ef74` is refused before this flag is considered. Requires a non-emulator run and is refused if `FIRESTORE_EMULATOR_HOST` is set. |
 | `--max-items <n>` | `0` (all) | Cap how many new staged notices are created in one run. |
 
 ### Guardrails
 
 - A bare invocation is still a dry run — `--write` defaults to `false`.
 - `--allow-production` and `--emulator` are usage errors without `--write`.
+- `--allow-production` is only a live-write confirmation for **staging**. Despite
+  the name, it is never a production switch: `jntuh-notes-6ef74` is refused
+  unconditionally, with or without the flag, and no example below ever targets
+  production.
 - Credentials come from **Application Default Credentials**
   (`GOOGLE_APPLICATION_CREDENTIALS`, or an attached/Workload Identity service
   account). No key is stored in the repository, and the collector keeps no
   secrets in code.
-- The store's allowlist accepts only the three staging collection names above.
+- The store's allowlist accepts only the three staging collection names above, and
+  `resolveDatabaseId()` accepts only `(default)` in `jntuh-notes-staging`.
 
 ```bash
 # Stage into the local emulator (safe, no production data)
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
-  node collector/index.mjs --write --emulator --project jntuh-notes-6ef74
+  node collector/index.mjs --write --emulator --project jntuh-notes-staging
 
-# Stage into production (deliberate double opt-in)
-node collector/index.mjs --write --allow-production --project jntuh-notes-6ef74
+# Live-write opt-in for the STAGING project only
+# (production is refused unconditionally and is never a target)
+node collector/index.mjs --write --allow-production --project jntuh-notes-staging
 ```
 
 ### The admin review workflow is separate
 
-Staging and review are two distinct systems:
+Staging and review are two distinct systems in two distinct projects:
 
-- the **collector** writes raw staged notices into `ingestItems`;
+- the **collector** writes raw staged notices into `ingestItems` in
+  `jntuh-notes-staging`;
 - the **admin review workflow** is the web app page at `/admin/ingest`
   (`src/lib/ingest.js` + `src/pages/admin/AdminIngest.jsx`). There an
   administrator filters the queue by review state and source, opens the original
   source URL, ignores a notice, returns an ignored notice to review, or promotes
-  a reviewed notice into a private alert **draft** in one transaction.
+  a reviewed notice into a private alert **draft** in the production project
+  `jntuh-notes-6ef74`. Firestore has no cross-project transaction, so a promotion
+  creates the draft first (with a deterministic id, never overwriting an existing
+  one) and then claims the staged notice in `jntuh-notes-staging`; both steps are
+  retry-safe, so a notice can never yield two alerts and an interrupted promotion
+  heals on the next attempt.
 
 Neither half can publish: promotion creates a draft, and verification/publishing
 stay a manual administrator action on the Alert Radar page.
@@ -360,7 +380,8 @@ So the collector produces drafts, an administrator reviews them in
 **no extra field may ever be added to an alert document.** Everything the
 collector records beyond the alert schema — canonical URL, document URL,
 attachments, content hash, review metadata — lives in its own staging
-collections instead:
+collections instead, in the **separate Firebase project**
+`jntuh-notes-staging`:
 
 - `ingestItems` — one document per staged notice, plus the review fields an
   administrator may change (`reviewState`, `promotedAlertId`, `promotedAt`,
@@ -368,10 +389,20 @@ collections instead:
 - `ingestRuns` — one document per collector run (counts, status, warnings);
 - `ingestSourceHealth` — one document per official source.
 
-All three are admin-only in `firestore.rules`: only administrators may read
+All three are governed by `firestore.staging.rules`: only administrators may read
 them, the collector writes them through the Admin SDK, and a browser may change
-only the four review fields on `ingestItems`. The public `alerts` collection is
-never written by the collector.
+only the four review fields on `ingestItems`. The public `alerts` collection
+lives in the production project `jntuh-notes-6ef74`, is never written by the
+collector, and is not reachable from the staging project at all.
+
+The project boundary is what makes that a **hard** guarantee rather than a code
+convention: the collector's credential exists only in `jntuh-notes-staging` and
+has no IAM roles in production. The code is pinned to the staging project and its
+`(default)` database (`STAGING_PROJECT_ID` / `STAGING_DATABASE_ID` and
+`resolveProjectId()` / `resolveDatabaseId()`), each project deploys its own
+ruleset (`firebase.json` → `firestore.rules`, `firebase.staging.json` →
+`firestore.staging.rules`), and `assertCollection()` remains as defence in depth
+— see [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -387,9 +418,14 @@ scheduler adds no second collection pipeline and no new write path.
 - The only trigger is a manual dispatch; the `schedule:` block ships commented out.
 - A staging run additionally requires the owner-set repository variable
   `COLLECTOR_STAGING_ENABLED=true`, and is refused if the project is not
-  `jntuh-notes-6ef74`, if a Firestore emulator host is set, if there are no
-  Application Default Credentials, if `--offline` fixtures are requested, or if
-  `--max-items` is missing, zero or over the cap.
+  `jntuh-notes-staging`, if `COLLECTOR_DATABASE_ID` is anything but `(default)`, if
+  a Firestore emulator host is set, if there are no Application Default
+  Credentials, if `--offline` fixtures are requested, or if `--max-items` is
+  missing, zero or over the cap.
+- A staging run authenticates with a dedicated service account whose only role is
+  the least-privilege custom role `jntuhCollectorStaging`, bound only in
+  `jntuh-notes-staging`; see [SECURITY.md](SECURITY.md) for what that role does
+  and does not enforce.
 - Chosen runner, why not Cloud Functions, credentials, failure handling, and how
   to enable or disable it: [SCHEDULING.md](SCHEDULING.md).
 

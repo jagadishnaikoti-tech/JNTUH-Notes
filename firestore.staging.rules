@@ -1,0 +1,140 @@
+rules_version = '2';
+
+// ===========================================================================
+// JNTUH Notes - Cloud Firestore security rules for the STAGING PROJECT
+//
+// This ruleset is deployed to the `(default)` database of the separate Firebase
+// project `jntuh-notes-staging`, NOT to the production project
+// `jntuh-notes-6ef74`. The collector stages notices there (ingestItems /
+// ingestRuns / ingestSourceHealth) and an administrator reviews them at
+// /admin/ingest. The public `alerts` collection lives in the production project
+// and is governed by firestore.rules.
+//
+// Why a separate project at all?
+//   The collector writes through the Firebase Admin SDK, which bypasses these
+//   rules, and Google Cloud IAM cannot be scoped to a collection. Giving the
+//   collector credential IAM only on its own project is the boundary that keeps
+//   it out of production. The project split also means the staging admin session
+//   is separate from production (Firebase Auth tokens are project-scoped).
+//   See collector/SECURITY.md.
+//
+// Threat model:
+//   * Only an authenticated administrator of THIS project (custom claim
+//     `admin == true`) may read the staging collections. A production admin
+//     token is not accepted here.
+//   * The collector, not a client, owns each item's identity and every
+//     notice-derived field. The single client mutation permitted is an
+//     administrator moving a staged item through the review state machine.
+//   * Nothing in this project is ever public, and nothing here can publish an
+//     alert: publishing lives entirely in the production project.
+//
+// Deploy with:  npm run deploy:rules:staging
+// ===========================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers -----------------------------------------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Server-enforced administrator check. Never trust the client UI alone.
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function isString(v, maxLen) {
+      return v is string && v.size() <= maxLen;
+    }
+
+    // ---- ingestItems/{itemId} ---------------------------------------------
+    // JNTUH Alert Radar STAGING. These documents are written ONLY by the trusted
+    // collector through the Admin SDK, which bypasses these rules. A client may
+    // never create an item, because the collector owns the item's identity and
+    // every notice-derived field (title, URLs, hashes, source ids and the
+    // collector timestamps). The single client mutation permitted is an
+    // administrator moving a staged item through the review state machine.
+
+    // The only fields an administrator may change on a staged item. Everything
+    // else in the document is immutable from the client side.
+    function reviewUpdateFields() {
+      return ['reviewState', 'promotedAlertId', 'promotedAt', 'promotedBy'];
+    }
+
+    function promotionMetadataFields() {
+      return ['promotedAlertId', 'promotedAt', 'promotedBy'];
+    }
+
+    function validPromotionMetadata(d) {
+      return d.keys().hasAll(promotionMetadataFields())
+        && isString(d.promotedAlertId, 200) && d.promotedAlertId.size() >= 1
+        && d.promotedAt is timestamp
+        && isString(d.promotedBy, 200) && d.promotedBy.size() >= 1;
+    }
+
+    function validReviewDocument(d) {
+      return d.keys().hasAll(['reviewState'])
+        && d.reviewState in ['new', 'promoted', 'ignored']
+        && (d.reviewState == 'promoted'
+          ? validPromotionMetadata(d)
+          : !d.keys().hasAny(promotionMetadataFields()));
+    }
+
+    function onlyReviewStateChanged(d, existing) {
+      return d.diff(existing).affectedKeys().hasOnly(['reviewState'])
+        && d.diff(existing).affectedKeys().hasAll(['reviewState']);
+    }
+
+    // Allowed client transitions are new -> ignored, ignored -> new (only
+    // without promotion metadata), and new/ignored -> promoted. Promotion is
+    // terminal, and its metadata is written once as part of that transition.
+    function validReviewUpdate(d, existing) {
+      return validReviewDocument(existing)
+        && validReviewDocument(d)
+        && (
+          (
+            ((existing.reviewState == 'new' && d.reviewState == 'ignored')
+              || (existing.reviewState == 'ignored' && d.reviewState == 'new'))
+            && onlyReviewStateChanged(d, existing)
+          )
+          || (
+            (existing.reviewState == 'new' || existing.reviewState == 'ignored')
+            && d.reviewState == 'promoted'
+            && d.diff(existing).affectedKeys().hasOnly(reviewUpdateFields())
+            && d.diff(existing).affectedKeys().hasAll(reviewUpdateFields())
+          )
+        );
+    }
+
+    match /ingestItems/{itemId} {
+      allow read: if isAdmin();
+      allow create: if false;   // the collector is the only creator
+      allow update: if isAdmin() && validReviewUpdate(request.resource.data, resource.data);
+      allow delete: if false;
+    }
+
+    // ---- ingestRuns/{runId} -----------------------------------------------
+    // One audit document per collector run (status, counters, source summary).
+    // Written only by the collector; administrators may read the audit trail.
+
+    match /ingestRuns/{runId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ---- ingestSourceHealth/{sourceId} ------------------------------------
+    // Rolling per-source health (consecutive failures, last notices, error).
+    // Written only by the collector; administrators may read it.
+
+    match /ingestSourceHealth/{sourceId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Everything else - including `alerts` - is denied by default. The public
+    // alert collection does not exist in this project and is not reachable
+    // through this ruleset even by an administrator.
+  }
+}

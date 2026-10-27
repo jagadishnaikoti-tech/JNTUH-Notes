@@ -1,20 +1,21 @@
 // ---------------------------------------------------------------------------
 // End-to-end ingestion -> admin review -> promotion, against the REAL Firestore
-// emulator and the REAL firestore.rules.
+// emulator, the REAL two-project layout and both real rulesets.
 //
 // It drives the whole local workflow with synthetic data only:
 //
 //   1. stage  : the collector's real write path (planRun + executeRun through the
-//               allowlisted Admin SDK store) writes one `ingestItems` document;
-//   2. review : the admin client (src/lib/ingest.js) retrieves it, ignores it and
-//               returns it to the queue;
-//   3. promote: promotion creates exactly one unverified DRAFT alert, and a
-//               repeat promotion adds no second alert;
-//   4. safety : staging never touches `alerts`, nothing is published and no draft
-//               is publicly readable.
+//               allowlisted Admin SDK store) writes one `ingestItems` document
+//               into the `jntuh-notes-staging` project;
+//   2. review : the admin client (src/lib/ingest.js) retrieves it from staging,
+//               ignores it and returns it to the queue;
+//   3. promote: promotion creates exactly one unverified DRAFT alert in the
+//               production project, and a repeat adds no second alert;
+//   4. safety : nothing is auto-published, no draft is publicly readable, and no
+//               staging collection ever appears in the production project.
 //
-// The project id is a `demo-` id on purpose: firebase-tools refuses to talk to a
-// real project for `demo-*` ids, so this suite can never touch live data.
+// The project ids are `demo-` ids on purpose: firebase-tools refuses to talk to
+// a real project for `demo-*` ids, so this suite can never touch live data.
 //
 // Run with `npm run test:rules` (wrapped in `firebase emulators:exec`).
 // ---------------------------------------------------------------------------
@@ -26,7 +27,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 
-import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import * as firestoreSdk from "firebase/firestore";
 
 import {
@@ -39,61 +39,69 @@ import {
 } from "../../../src/lib/ingest.js";
 import { createIngestStore } from "../../lib/firestoreAdmin.mjs";
 import { executeRun, itemIdsForSources, planRun } from "../../write.mjs";
+import {
+  DEFAULT_DATABASE,
+  STAGING_PROJECT,
+  clearDatabase,
+  emulatorEndpoint,
+  loadRules,
+  makeDbEnv,
+} from "./emulatorDb.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const RULES = readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
+const STAGING_RULES = readFileSync(path.join(ROOT, "firestore.staging.rules"), "utf8");
+const PUBLIC_RULES = readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
 
 const PROJECT_ID = "demo-jntuh-notes";
-const EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
-const [host, portRaw] = EMULATOR_HOST.split(":");
-const port = Number(portRaw);
+const { host, port } = emulatorEndpoint();
+const EMULATOR_HOST = `${host}:${port}`;
+
+const STAGING = { projectId: STAGING_PROJECT, databaseId: DEFAULT_DATABASE, host, port };
+const DEFAULTS = { projectId: PROJECT_ID, databaseId: DEFAULT_DATABASE, host, port };
 
 const ADMIN_ACTOR = "admin@jntuh.example";
 
-let testEnv;
+let staging;
+let defaults;
 
 before(async () => {
-  testEnv = await initializeTestEnvironment({
-    projectId: PROJECT_ID,
-    firestore: { rules: RULES, host, port },
-  });
+  await loadRules({ ...STAGING, rules: STAGING_RULES });
+  await loadRules({ ...DEFAULTS, rules: PUBLIC_RULES });
+  staging = makeDbEnv(STAGING);
+  defaults = makeDbEnv(DEFAULTS);
 });
 
 beforeEach(async () => {
-  await testEnv.clearFirestore();
+  await clearDatabase(STAGING);
+  await clearDatabase(DEFAULTS);
 });
 
 afterEach(async () => {
-  // Remove every synthetic document this suite may have created.
-  await testEnv.clearFirestore();
+  await clearDatabase(STAGING);
+  await clearDatabase(DEFAULTS);
 });
 
 after(async () => {
   // Prove the emulator holds no temporary test documents before shutdown.
-  await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    const db = ctx.firestore();
-    for (const collection of Object.values(INGEST_COLLECTIONS)) {
-      const snap = await firestoreSdk.getDocs(firestoreSdk.collection(db, collection));
-      assert.equal(snap.size, 0, `temporary ${collection} documents remain`);
-    }
-    const alerts = await firestoreSdk.getDocs(firestoreSdk.collection(db, "alerts"));
-    assert.equal(alerts.size, 0, "temporary alerts documents remain");
-  });
-  await testEnv.cleanup();
+  for (const collection of Object.values(INGEST_COLLECTIONS)) {
+    assert.equal(await staging.count(collection), 0, `temporary ${collection} documents remain`);
+  }
+  assert.equal(await staging.count("alerts"), 0, "temporary staging alerts remain");
+  assert.equal(await defaults.count("alerts"), 0, "temporary alerts documents remain");
+  await Promise.all([staging.cleanup(), defaults.cleanup()]);
 });
 
-function adminContext() {
-  return testEnv.authenticatedContext("admin-1", { admin: true }).firestore();
-}
-
-const contextFor = (db) => ({ context: { db, sdk: firestoreSdk } });
+/** The admin ingest context: staging `db`, production `alertsDb`. */
+const contextFor = (db = staging.admin, alertsDb = defaults.admin) => ({
+  context: { db, alertsDb, sdk: firestoreSdk },
+});
 
 /** The collector's allowlisted Admin SDK store, pointed at the emulator. */
 function makeStore() {
   return createIngestStore({
-    projectId: PROJECT_ID,
+    projectId: STAGING_PROJECT,
     emulator: true,
-    allowedProjects: [PROJECT_ID],
+    allowedProjects: [STAGING_PROJECT],
     // Only the emulator host is supplied so the collector's own project check
     // cannot be tripped by an ambient GOOGLE_CLOUD_PROJECT / GCLOUD_PROJECT.
     env: { FIRESTORE_EMULATOR_HOST: EMULATOR_HOST },
@@ -160,7 +168,8 @@ async function stageNotice(store) {
     trigger: "manual",
     actor: "e2e-test",
     dryRun: false,
-    projectId: PROJECT_ID,
+    projectId: STAGING_PROJECT,
+    databaseId: store.databaseId,
     maxItems: 10,
   });
   assert.equal(plan.refused, false, "the staging plan must not be refused");
@@ -169,61 +178,52 @@ async function stageNotice(store) {
   return { runId, itemId: [...ids][0] };
 }
 
-async function reviewStateOf(db, itemId) {
-  const snap = await firestoreSdk.getDoc(
-    firestoreSdk.doc(db, INGEST_COLLECTIONS.ITEMS, itemId)
-  );
-  return snap.data().reviewState;
+/** The review state of a staged item, read from the STAGING project. */
+async function reviewStateOf(itemId) {
+  const data = await staging.get([INGEST_COLLECTIONS.ITEMS, itemId]);
+  return data?.reviewState;
 }
 
-describe("collector staging -> admin review -> promotion (real rules, emulator only)", () => {
-  it("stages a notice, reviews it, and promotes exactly one private unverified draft", async () => {
+describe("collector staging -> admin review -> promotion (real rules, two projects, emulator only)", () => {
+  it("stages a notice in staging, reviews it, and promotes exactly one private unverified draft into production", async () => {
     const store = makeStore();
     try {
       const { itemId, runId } = await stageNotice(store);
-      const db = adminContext();
 
-      // The collector wrote the item plus its run/health audit documents.
-      const stagedItem = await firestoreSdk.getDoc(
-        firestoreSdk.doc(db, INGEST_COLLECTIONS.ITEMS, itemId)
-      );
-      assert.equal(stagedItem.exists(), true, "the synthetic notice was staged");
-      assert.equal(stagedItem.data().reviewState, REVIEW_STATE.NEW);
-      assert.equal(stagedItem.data().lastRunId, runId);
-      assert.equal(
-        (await firestoreSdk.getDoc(firestoreSdk.doc(db, INGEST_COLLECTIONS.RUNS, runId))).exists(),
-        true,
-        "the collector run document was written"
-      );
-      assert.equal(
-        (await firestoreSdk.getDoc(firestoreSdk.doc(db, INGEST_COLLECTIONS.HEALTH, SOURCE_ID))).exists(),
-        true,
-        "the source-health document was written"
-      );
+      // The collector wrote the item plus its run/health audit documents, all
+      // in the staging project.
+      const stagedItem = await staging.get([INGEST_COLLECTIONS.ITEMS, itemId]);
+      assert.ok(stagedItem, "the synthetic notice was staged");
+      assert.equal(stagedItem.reviewState, REVIEW_STATE.NEW);
+      assert.equal(stagedItem.lastRunId, runId);
+      assert.ok(await staging.get([INGEST_COLLECTIONS.RUNS, runId]), "the collector run document was written");
+      assert.ok(await staging.get([INGEST_COLLECTIONS.HEALTH, SOURCE_ID]), "the source-health document was written");
 
-      // Staging must never create an alert.
-      const alertsAfterStaging = await firestoreSdk.getDocs(
-        firestoreSdk.collection(db, "alerts")
-      );
-      assert.equal(alertsAfterStaging.size, 0, "staging never creates an alert");
+      // Staging must never create an alert - in staging or in production.
+      assert.equal(await staging.count("alerts"), 0, "staging never creates an alert in staging");
+      assert.equal(await defaults.count("alerts"), 0, "staging never creates an alert in production");
+      // ...and no staging collection may appear in the production project.
+      assert.equal(await defaults.count(INGEST_COLLECTIONS.ITEMS), 0);
+      assert.equal(await defaults.count(INGEST_COLLECTIONS.RUNS), 0);
+      assert.equal(await defaults.count(INGEST_COLLECTIONS.HEALTH), 0);
 
-      // Admin review can retrieve the staged notice.
-      const listing = await fetchIngestItems({ pageSize: 25 }, contextFor(db));
+      // Admin review can retrieve the staged notice from staging.
+      const listing = await fetchIngestItems({ pageSize: 25 }, contextFor());
       assert.equal(listing.items.length, 1);
       assert.equal(listing.items[0].id, itemId);
       assert.equal(listing.items[0].reviewState, REVIEW_STATE.NEW);
 
       // Ignore it, then return it to the queue.
-      await ignoreIngestItem({ itemId }, contextFor(db));
-      assert.equal(await reviewStateOf(db, itemId), REVIEW_STATE.IGNORED);
+      await ignoreIngestItem({ itemId }, contextFor());
+      assert.equal(await reviewStateOf(itemId), REVIEW_STATE.IGNORED);
 
-      await returnIngestItemToReview({ itemId }, contextFor(db));
-      assert.equal(await reviewStateOf(db, itemId), REVIEW_STATE.NEW);
+      await returnIngestItemToReview({ itemId }, contextFor());
+      assert.equal(await reviewStateOf(itemId), REVIEW_STATE.NEW);
 
-      // Promote -> exactly one draft, linked to the item.
+      // Promote -> exactly one draft, in production, linked from the staging item.
       const first = await promoteIngestItem(
         { itemId, input: PROMOTION_INPUT, actor: ADMIN_ACTOR },
-        contextFor(db)
+        contextFor()
       );
       assert.equal(first.created, true);
       assert.ok(first.alertId, "an alert id is returned");
@@ -231,36 +231,31 @@ describe("collector staging -> admin review -> promotion (real rules, emulator o
       // Promote again -> same alert, no duplicate.
       const second = await promoteIngestItem(
         { itemId, input: PROMOTION_INPUT, actor: ADMIN_ACTOR },
-        contextFor(db)
+        contextFor()
       );
       assert.equal(second.created, false);
       assert.equal(second.alertId, first.alertId);
 
-      const alerts = await firestoreSdk.getDocs(firestoreSdk.collection(db, "alerts"));
-      assert.equal(alerts.size, 1, "promotion created exactly one alert");
+      assert.equal(await defaults.count("alerts"), 1, "promotion created exactly one alert, in production");
+      assert.equal(await staging.count("alerts"), 0, "the alert was not written to staging");
 
-      const alertData = (
-        await firestoreSdk.getDoc(firestoreSdk.doc(db, "alerts", first.alertId))
-      ).data();
+      const alertData = await defaults.get(["alerts", first.alertId]);
       assert.equal(alertData.status, "draft", "promotion creates a draft, never a published alert");
       assert.equal(alertData.verifiedAt, null);
       assert.equal(alertData.verifiedBy, "");
 
-      // The item now carries the promotion metadata.
-      const itemData = (
-        await firestoreSdk.getDoc(firestoreSdk.doc(db, INGEST_COLLECTIONS.ITEMS, itemId))
-      ).data();
+      // The item now carries the promotion metadata, in staging.
+      const itemData = await staging.get([INGEST_COLLECTIONS.ITEMS, itemId]);
       assert.equal(itemData.reviewState, REVIEW_STATE.PROMOTED);
       assert.equal(itemData.promotedAlertId, first.alertId);
 
       // No automatic publication: anonymous visitors see nothing.
-      const anonDb = testEnv.unauthenticatedContext().firestore();
       await assert.rejects(
-        firestoreSdk.getDoc(firestoreSdk.doc(anonDb, "alerts", first.alertId))
+        firestoreSdk.getDoc(firestoreSdk.doc(defaults.anon, "alerts", first.alertId))
       );
       const published = await firestoreSdk.getDocs(
         firestoreSdk.query(
-          firestoreSdk.collection(anonDb, "alerts"),
+          firestoreSdk.collection(defaults.anon, "alerts"),
           firestoreSdk.where("status", "==", "published")
         )
       );
@@ -274,15 +269,14 @@ describe("collector staging -> admin review -> promotion (real rules, emulator o
     const store = makeStore();
     try {
       const { itemId } = await stageNotice(store);
-      const db = adminContext();
 
       await promoteIngestItem(
         { itemId, input: PROMOTION_INPUT, actor: ADMIN_ACTOR },
-        contextFor(db)
+        contextFor()
       );
 
       // The one-way state machine: a promoted notice can never be returned.
-      await assert.rejects(returnIngestItemToReview({ itemId }, contextFor(db)));
+      await assert.rejects(returnIngestItemToReview({ itemId }, contextFor()));
     } finally {
       await store.close();
     }

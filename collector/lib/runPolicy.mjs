@@ -12,9 +12,12 @@
 //   * `--allow-production` is emitted ONLY for mode "stage", and only when the
 //     out-of-band switch COLLECTOR_STAGING_ENABLED is exactly the string "true"
 //     (the same comparison the workflow guard makes);
-//   * staging refuses any project id but INTENDED_PROJECT_ID, refuses to run
-//     while a Firestore emulator host is set, and refuses without Application
-//     Default Credentials;
+//   * staging refuses any project id but STAGING_PROJECT_ID (and refuses the
+//     production project explicitly), refuses to run while a Firestore emulator
+//     host is set, and refuses without Application Default Credentials;
+//   * staging is pinned to the staging project's "(default)" database and
+//     refuses any other COLLECTOR_DATABASE_ID. The PROJECT boundary, enforced by
+//     IAM, is what keeps the production project unreachable;
 //   * `--offline` (replay saved HTML) is dry-run only: a staging run must read
 //     the live official pages, never a stale fixture;
 //   * `--max-items` is always a positive, capped integer, so a scheduled run can
@@ -24,7 +27,11 @@
 //     rejected rather than passed through.
 // ---------------------------------------------------------------------------
 
-import { INTENDED_PROJECT_ID } from "./runReport.mjs";
+import {
+  PRODUCTION_PROJECT_ID,
+  STAGING_DATABASE_ID,
+  STAGING_PROJECT_ID,
+} from "./runReport.mjs";
 
 /** The only two modes a scheduled run may use. */
 export const RUN_MODE = Object.freeze({
@@ -66,7 +73,7 @@ function refuse(reason) {
  * value the workflow guard compares against (`[ "$STAGING_ENABLED" != "true" ]`).
  *
  * Everything else fails closed: the boolean `true`, "TRUE", " true ", "1",
- * "yes" and "on" are all OFF. A production write path must not be armable by an
+ * "yes" and "on" are all OFF. A live staging write path must not be armable by an
  * ambiguous value, and `process.env` values are always strings anyway.
  */
 export function isEnabled(value) {
@@ -123,7 +130,7 @@ function nonNegativeInt(value, name, { fallback, cap } = {}) {
  * @param {object} input
  * @param {string}  [input.mode]            "dry-run" (default) or "stage".
  * @param {boolean|string} [input.stagingEnabled] the out-of-band opt-in.
- * @param {string}  [input.projectId]       must equal INTENDED_PROJECT_ID to stage.
+ * @param {string}  [input.projectId]       must equal STAGING_PROJECT_ID to stage.
  * @param {string}  [input.credentialPath]  GOOGLE_APPLICATION_CREDENTIALS.
  * @param {string}  [input.emulatorHost]    FIRESTORE_EMULATOR_HOST, if any.
  * @param {number|string} [input.maxItems]  cap on NEW staged notices.
@@ -140,6 +147,7 @@ export function resolveRunPlan(input = {}) {
     mode,
     stagingEnabled,
     projectId,
+    databaseId,
     credentialPath,
     emulatorHost,
     maxItems,
@@ -205,8 +213,13 @@ export function resolveRunPlan(input = {}) {
 
   const wanted = cleanValue(projectId, "project id");
   if (!wanted.ok) return refuse(wanted.reason);
-  if (wanted.value !== INTENDED_PROJECT_ID) {
-    return refuse(`refusing to stage into "${wanted.value}" (expected ${INTENDED_PROJECT_ID})`);
+  if (wanted.value === PRODUCTION_PROJECT_ID) {
+    return refuse(
+      `refusing the production project "${PRODUCTION_PROJECT_ID}": a staging run is pinned to "${STAGING_PROJECT_ID}"`,
+    );
+  }
+  if (wanted.value !== STAGING_PROJECT_ID) {
+    return refuse(`refusing to stage into "${wanted.value}" (expected ${STAGING_PROJECT_ID})`);
   }
 
   if (String(emulatorHost ?? "").trim()) {
@@ -216,6 +229,17 @@ export function resolveRunPlan(input = {}) {
   const credentials = cleanValue(credentialPath, "GOOGLE_APPLICATION_CREDENTIALS");
   if (!credentials.ok) {
     return refuse(`${credentials.reason} - a staging run needs Application Default Credentials`);
+  }
+
+  // The database id is pinned, not configurable. If a runner sets
+  // COLLECTOR_DATABASE_ID at all it must already agree with the staging
+  // project's primary database; any named database is misconfiguration and the
+  // run fails closed rather than targeting something else.
+  const database = String(databaseId ?? "").trim();
+  if (database && database !== STAGING_DATABASE_ID) {
+    return refuse(
+      `refusing to stage into database "${database}": the collector is pinned to "${STAGING_DATABASE_ID}" in the staging project "${STAGING_PROJECT_ID}"`,
+    );
   }
 
   const budget = nonNegativeInt(maxItems, "max items", {
@@ -231,7 +255,7 @@ export function resolveRunPlan(input = {}) {
     "--write",
     "--allow-production",
     "--project",
-    INTENDED_PROJECT_ID,
+    STAGING_PROJECT_ID,
     "--max-items",
     String(budget.value),
   );
@@ -241,9 +265,10 @@ export function resolveRunPlan(input = {}) {
     mode: RUN_MODE.STAGE,
     writes: true,
     argv,
-    projectId: INTENDED_PROJECT_ID,
+    projectId: STAGING_PROJECT_ID,
+    databaseId: STAGING_DATABASE_ID,
     maxItems: budget.value,
-    summary: `staging to ${INTENDED_PROJECT_ID} (at most ${budget.value} new notices) - staging never publishes`,
+    summary: `staging to ${STAGING_PROJECT_ID}/${STAGING_DATABASE_ID} (at most ${budget.value} new notices) - staging never publishes`,
   };
 }
 
@@ -256,6 +281,7 @@ export function resolveRunPlanFromEnv(env = {}) {
     mode: env.COLLECTOR_MODE,
     stagingEnabled: env.COLLECTOR_STAGING_ENABLED,
     projectId: env.COLLECTOR_PROJECT_ID,
+    databaseId: env.COLLECTOR_DATABASE_ID,
     credentialPath: env.GOOGLE_APPLICATION_CREDENTIALS,
     emulatorHost: env.FIRESTORE_EMULATOR_HOST,
     maxItems: env.COLLECTOR_MAX_ITEMS,

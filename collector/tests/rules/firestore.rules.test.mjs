@@ -1,10 +1,16 @@
 // ---------------------------------------------------------------------------
-// Firestore security-rules tests for the Phase 2 staging collections.
+// Firestore security-rules tests for the PRODUCTION project's `(default)`
+// database (firestore.rules).
+//
+// `(default)` holds alerts, analyticsEvents, channels, settings and users. The
+// collector's staging collections live in the separate `jntuh-notes-staging`
+// project with their own ruleset, `firestore.staging.rules` - this file proves
+// they are ABSENT here and therefore denied to every client, including an
+// admin. The staging rules themselves are covered by ./staging.rules.test.mjs.
 //
 // These run against the Firebase Emulator Suite, never against production. The
 // project id is a `demo-` id on purpose: firebase-tools refuses to talk to a
-// real project for `demo-*` ids, so this suite can never touch the live
-// database even by accident.
+// real project for `demo-*` ids, so this suite can never touch live data.
 //
 // Run with:
 //   npm run test:rules
@@ -22,7 +28,14 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
+import {
+  deleteDoc,
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const RULES = readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
@@ -63,7 +76,10 @@ function nonAdmin() {
 
 /** A signed-in administrator (custom claim `admin == true`). */
 function admin() {
-  return testEnv.authenticatedContext("admin-1", { admin: true }).firestore();
+  return testEnv.authenticatedContext("admin-1", {
+    admin: true,
+    email: "admin@jntuh.example",
+  }).firestore();
 }
 
 /** Seed a document bypassing the rules (this is what the collector does). */
@@ -101,168 +117,37 @@ const RUN_DOC = { runId: "run-1", status: "ok", dryRun: false, startedAt: new Da
 const HEALTH_PATH = ["ingestSourceHealth", "notifications"];
 const HEALTH_DOC = { sourceId: "notifications", status: "ok", consecutiveFailures: 0 };
 
-describe("staging collections are invisible to everyone but admins", () => {
-  it("anonymous users cannot read ingestItems", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(getDoc(doc(anon(), ...ITEM_PATH)));
-  });
+// ---------------------------------------------------------------------------
+// The staging collections must NOT work in the production project.
+//
+// They were removed from firestore.rules when staging moved to its own project.
+// Because the ruleset no longer mentions them, Firestore's default-deny applies:
+// an anonymous visitor, a signed-in non-admin AND an administrator are all
+// refused. That is deliberate - a client that forgets the separate staging
+// project fails loudly here instead of silently reading or writing staging data
+// in production.
+// ---------------------------------------------------------------------------
 
-  it("authenticated non-admins cannot read ingestItems", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(getDoc(doc(nonAdmin(), ...ITEM_PATH)));
-  });
-
-  it("admins can read ingestItems", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertSucceeds(getDoc(doc(admin(), ...ITEM_PATH)));
-  });
-
-  it("anonymous and non-admin users cannot read ingestRuns", async () => {
-    await seed(RUN_PATH, RUN_DOC);
-    await assertFails(getDoc(doc(anon(), ...RUN_PATH)));
-    await assertFails(getDoc(doc(nonAdmin(), ...RUN_PATH)));
-  });
-
-  it("admins can read ingestRuns", async () => {
-    await seed(RUN_PATH, RUN_DOC);
-    await assertSucceeds(getDoc(doc(admin(), ...RUN_PATH)));
-  });
-
-  it("anonymous and non-admin users cannot read ingestSourceHealth", async () => {
-    await seed(HEALTH_PATH, HEALTH_DOC);
-    await assertFails(getDoc(doc(anon(), ...HEALTH_PATH)));
-    await assertFails(getDoc(doc(nonAdmin(), ...HEALTH_PATH)));
-  });
-
-  it("admins can read ingestSourceHealth", async () => {
-    await seed(HEALTH_PATH, HEALTH_DOC);
-    await assertSucceeds(getDoc(doc(admin(), ...HEALTH_PATH)));
-  });
-});
-
-describe("ingestItems: creation is collector-only", () => {
-  it("admins cannot create an ingestion item from client code", async () => {
-    await assertFails(setDoc(doc(admin(), "ingestItems", "new-item"), ITEM_DOC));
-  });
-
-  it("anonymous users cannot create an ingestion item", async () => {
-    await assertFails(setDoc(doc(anon(), "ingestItems", "new-item"), ITEM_DOC));
-  });
-});
-
-describe("ingestItems: review-state updates", () => {
-  it("admins can move an item to ignored", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertSucceeds(updateDoc(doc(admin(), ...ITEM_PATH), { reviewState: "ignored" }));
-  });
-
-  it("admins can promote an item with complete metadata", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertSucceeds(
-      updateDoc(doc(admin(), ...ITEM_PATH), {
-        reviewState: "promoted",
-        promotedAlertId: "alert-9",
-        promotedAt: new Date(),
-        promotedBy: "admin@jntuh.example",
-      }),
-    );
-  });
-
-  it("promoting without metadata is rejected", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { reviewState: "promoted" }));
-  });
-
-  it("promoting with a malformed alert id is rejected", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(
-      updateDoc(doc(admin(), ...ITEM_PATH), {
-        reviewState: "promoted",
-        promotedAlertId: "",
-        promotedAt: new Date(),
-        promotedBy: "admin@jntuh.example",
-      }),
-    );
-  });
-
-  it("promoting with a non-timestamp promotedAt is rejected", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(
-      updateDoc(doc(admin(), ...ITEM_PATH), {
-        reviewState: "promoted",
-        promotedAlertId: "alert-9",
-        promotedAt: "2026-10-17",
-        promotedBy: "admin@jntuh.example",
-      }),
-    );
-  });
-
-  it("an unknown review state is rejected", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { reviewState: "archived" }));
-  });
-
-  it("admins cannot change protected notice fields", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { title: "Rewritten" }));
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { canonicalUrl: "https://evil.example/x" }));
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { contentHash: "deadbeef" }));
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { sourceId: "exams" }));
-    await assertFails(updateDoc(doc(admin(), ...ITEM_PATH), { firstSeenAt: new Date() }));
-  });
-
-  it("a review update that also smuggles a protected field is rejected", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(
-      updateDoc(doc(admin(), ...ITEM_PATH), { reviewState: "ignored", title: "Rewritten" }),
-    );
-  });
-
-  it("non-admins cannot update an item", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(updateDoc(doc(nonAdmin(), ...ITEM_PATH), { reviewState: "ignored" }));
-  });
-
-  it("anonymous users cannot update an item", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(updateDoc(doc(anon(), ...ITEM_PATH), { reviewState: "ignored" }));
-  });
-
-  it("admins cannot delete an item", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(deleteDoc(doc(admin(), ...ITEM_PATH)));
-  });
-
-  it("non-admins cannot delete an item", async () => {
-    await seed(ITEM_PATH, ITEM_DOC);
-    await assertFails(deleteDoc(doc(nonAdmin(), ...ITEM_PATH)));
-  });
-});
-
-describe("ingestRuns and ingestSourceHealth are read-only to clients", () => {
+describe("staging collections are absent from the production project", () => {
   for (const [label, pathSegments, data] of [
+    ["ingestItems", ITEM_PATH, ITEM_DOC],
     ["ingestRuns", RUN_PATH, RUN_DOC],
     ["ingestSourceHealth", HEALTH_PATH, HEALTH_DOC],
   ]) {
-    it(`admins cannot create/update/delete ${label}`, async () => {
+    it(`denies every client access to ${label} in production`, async () => {
+      // Seed through the Admin SDK, exactly like the collector would if it
+      // were (wrongly) pointed at the production project.
       await seed(pathSegments, data);
+
+      // Nobody may read it here...
+      await assertFails(getDoc(doc(anon(), ...pathSegments)));
+      await assertFails(getDoc(doc(nonAdmin(), ...pathSegments)));
+      await assertFails(getDoc(doc(admin(), ...pathSegments)));
+
+      // ...and even an administrator may not write it here.
       await assertFails(setDoc(doc(admin(), label, "brand-new"), data));
-      await assertFails(updateDoc(doc(admin(), ...pathSegments), { status: "failed" }));
+      await assertFails(updateDoc(doc(admin(), ...pathSegments), { reviewState: "ignored" }));
       await assertFails(deleteDoc(doc(admin(), ...pathSegments)));
-    });
-
-    it(`non-admins cannot write ${label}`, async () => {
-      await seed(pathSegments, data);
-      await assertFails(setDoc(doc(nonAdmin(), label, "brand-new"), data));
-      await assertFails(updateDoc(doc(nonAdmin(), ...pathSegments), { status: "failed" }));
-      await assertFails(deleteDoc(doc(nonAdmin(), ...pathSegments)));
-    });
-
-    it(`anonymous users cannot write ${label}`, async () => {
-      await seed(pathSegments, data);
-      await assertFails(setDoc(doc(anon(), label, "brand-new"), data));
-      await assertFails(updateDoc(doc(anon(), ...pathSegments), { status: "failed" }));
-      await assertFails(deleteDoc(doc(anon(), ...pathSegments)));
     });
   }
 });
@@ -290,7 +175,7 @@ const PUBLISHED_ALERT = {
 
 const DRAFT_ALERT = { ...PUBLISHED_ALERT, status: "draft", verifiedAt: null, verifiedBy: "" };
 
-describe("existing alert rules are preserved", () => {
+describe("alert publication follows the verification workflow", () => {
   it("published alerts remain publicly readable", async () => {
     await seed(["alerts", "pub-1"], PUBLISHED_ALERT);
     await assertSucceeds(getDoc(doc(anon(), "alerts", "pub-1")));
@@ -302,14 +187,117 @@ describe("existing alert rules are preserved", () => {
     await assertFails(getDoc(doc(nonAdmin(), "alerts", "draft-1")));
   });
 
-  it("publishing without verification metadata is denied", async () => {
-    // Drop the verification fields entirely; a published alert must carry them.
-    const { verifiedAt, verifiedBy, ...unverified } = PUBLISHED_ALERT;
-    await assertFails(setDoc(doc(admin(), "alerts", "u-1"), unverified));
+  it("denies creating a published alert with fabricated verification metadata", async () => {
+    await assertFails(setDoc(doc(admin(), "alerts", "published-create"), PUBLISHED_ALERT));
   });
 
-  it("a verified publish by an admin still succeeds", async () => {
-    await assertSucceeds(setDoc(doc(admin(), "alerts", "ok-1"), PUBLISHED_ALERT));
+  it("denies fabricated verification metadata on a new draft", async () => {
+    await assertFails(setDoc(doc(admin(), "alerts", "forged-create"), {
+      ...DRAFT_ALERT,
+      verifiedAt: new Date("2026-10-01T00:00:00Z"),
+      verifiedBy: "admin@jntuh.example",
+    }));
+  });
+
+  it("denies an arbitrary timestamp when an admin verifies a draft", async () => {
+    await assertSucceeds(setDoc(doc(admin(), "alerts", "forged-update"), DRAFT_ALERT));
+    await assertFails(updateDoc(doc(admin(), "alerts", "forged-update"), {
+      verifiedAt: new Date("2026-10-01T00:00:00Z"),
+      verifiedBy: "admin@jntuh.example",
+    }));
+  });
+
+  it("denies verification metadata attributed to a different actor", async () => {
+    await assertSucceeds(setDoc(doc(admin(), "alerts", "wrong-actor"), DRAFT_ALERT));
+    await assertFails(updateDoc(doc(admin(), "alerts", "wrong-actor"), {
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "someone-else@jntuh.example",
+    }));
+  });
+
+  it("denies verifying and publishing in one update", async () => {
+    await assertSucceeds(setDoc(doc(admin(), "alerts", "combined-transition"), DRAFT_ALERT));
+    await assertFails(updateDoc(doc(admin(), "alerts", "combined-transition"), {
+      status: "published",
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "admin@jntuh.example",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  it("denies combining verification or publication with content edits", async () => {
+    const ref = doc(admin(), "alerts", "mixed-transition");
+    await assertSucceeds(setDoc(ref, DRAFT_ALERT));
+    await assertFails(updateDoc(ref, {
+      title: "Changed while verifying",
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "admin@jntuh.example",
+    }));
+
+    await assertSucceeds(updateDoc(ref, {
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "admin@jntuh.example",
+    }));
+    await assertFails(updateDoc(ref, {
+      title: "Changed while publishing",
+      status: "published",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  it("denies publishing an unverified draft", async () => {
+    await assertSucceeds(setDoc(doc(admin(), "alerts", "unverified-publish"), DRAFT_ALERT));
+    await assertFails(updateDoc(doc(admin(), "alerts", "unverified-publish"), {
+      status: "published",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  it("denies changing verification metadata as the draft is published", async () => {
+    const ref = doc(admin(), "alerts", "altered-publish");
+    await assertSucceeds(setDoc(ref, DRAFT_ALERT));
+    await assertSucceeds(updateDoc(ref, {
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "admin@jntuh.example",
+    }));
+    await assertFails(updateDoc(ref, {
+      status: "published",
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "someone-else@jntuh.example",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  it("allows an admin to verify a draft, then publish without altering verification", async () => {
+    const ref = doc(admin(), "alerts", "verify-then-publish");
+    await assertSucceeds(setDoc(ref, DRAFT_ALERT));
+
+    await assertSucceeds(updateDoc(ref, {
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "admin@jntuh.example",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+    const verified = await getDoc(ref);
+    const verifiedAt = verified.data().verifiedAt;
+    assert.ok(verifiedAt, "verification timestamp was recorded");
+    assert.equal(verified.data().verifiedBy, "admin@jntuh.example");
+    assert.equal(verified.data().status, "draft");
+
+    await assertSucceeds(updateDoc(ref, {
+      status: "published",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+    const published = await getDoc(ref);
+    assert.equal(published.data().status, "published");
+    assert.ok(published.data().verifiedAt.isEqual(verifiedAt));
+    assert.equal(published.data().verifiedBy, "admin@jntuh.example");
+    await assertSucceeds(getDoc(doc(anon(), "alerts", "verify-then-publish")));
   });
 });
 

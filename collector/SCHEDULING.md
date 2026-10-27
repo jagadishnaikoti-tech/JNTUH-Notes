@@ -14,18 +14,38 @@ something fails, and how to turn it off.
 ## What a scheduled run does — and does not do
 
 A run fetches the approved official listings, parses them and writes **only** to
-the admin-only staging collections:
+the admin-only staging collections in the **separate Firebase project**
+`jntuh-notes-staging`, in its `(default)` database:
 
-| Collection | Contents |
-| ---------- | -------- |
-| `ingestItems` | one document per notice the collector had not seen before |
-| `ingestRuns` | one report per run (status, counters, per-source outcome) |
-| `ingestSourceHealth` | rolling per-source health and the last error |
+| Collection | Contents | Project |
+| ---------- | -------- | ------- |
+| `ingestItems` | one document per notice the collector had not seen before | `jntuh-notes-staging` |
+| `ingestRuns` | one report per run (status, counters, per-source outcome) | `jntuh-notes-staging` |
+| `ingestSourceHealth` | rolling per-source health and the last error | `jntuh-notes-staging` |
+
+The public `alerts` collection, analytics, channels, settings and users all live
+in the **production** project `jntuh-notes-6ef74` (its `(default)` database). The
+isolation boundary is the **Firebase project**: the collector's service account
+gets IAM **only** in `jntuh-notes-staging`, so there is no network/credential path
+to production at all. The rulesets are also separate
+([`firestore.staging.rules`](../firestore.staging.rules) vs
+[`firestore.rules`](../firestore.rules)). The project and database id are
+**pinned in code** (`STAGING_PROJECT_ID` and `STAGING_DATABASE_ID` in
+[`lib/runReport.mjs`](lib/runReport.mjs)) — there is no flag or environment
+variable that can redirect a staging write to production, and a bad value refuses
+the run instead of falling back.
 
 It can never publish. There is no code path in the collector that writes the
 public `alerts` collection, and `firestore.rules` requires an admin-only
 `verifiedAt` / `verifiedBy` pair before any alert may be `published`. Publishing
 remains a manual administrator action in the web app.
+
+The three-collection restriction is *additionally* enforced by the collector's own
+`assertCollection()` allowlist, and the project/database choice by
+`resolveProjectId()` / `resolveDatabaseId()`. Neither replaces IAM: use the IAM
+grants from [`SECURITY.md`](SECURITY.md) for the enforced boundary, and treat
+the code checks as defence in depth. [`SECURITY.md`](SECURITY.md) states exactly
+what that boundary is, what it is not, and how to verify the grant.
 
 ---
 
@@ -70,44 +90,55 @@ staged until the timer is back; nothing is published either way. The manual
 ## Authentication
 
 The collector writes Firestore through the **Admin SDK**, which bypasses
-`firestore.rules`; **IAM is the real boundary** for a scheduled run. Two options
-are supported; both keep the credential out of the repository.
+`firestore.rules`; **IAM is the real boundary** for a scheduled run. The
+collector credential lives **only** in the staging project
+`jntuh-notes-staging` (no roles in production), and the code refuses
+`jntuh-notes-6ef74`. The workflow uses **Workload Identity Federation (WIF)**
+with no long-lived service-account JSON key. [`SECURITY.md`](SECURITY.md)
+states that boundary in full.
 
-### Option A — service-account secret (implemented)
+### Workload Identity Federation (preferred, implemented)
 
-1. Create a dedicated service account in the Firebase/GCP project, e.g.
-   `collector-runner@jntuh-notes-6ef74.iam.gserviceaccount.com`.
-2. Grant it **exactly one** role: `roles/datastore.user` (Firestore read/write).
-   Do **not** grant `roles/owner`, `roles/editor` or `firebase.admin`.
-3. Add its JSON key as the repository secret `FIREBASE_SERVICE_ACCOUNT`.
-4. The workflow writes that secret to `$RUNNER_TEMP/collector-service-account.json`
-   (mode `0600`) and points `GOOGLE_APPLICATION_CREDENTIALS` at it. The key never
-   touches the repository, the logs (GitHub masks it) or a longer-lived file.
+The workflow (`.github/workflows/collect-alerts.yml`) requests a short-lived
+GitHub OIDC token (`permissions: id-token: write`) and exchanges it for
+impersonated credentials via `google-github-actions/auth@v2`. No repository
+secret holds a private key.
 
-Rotate the key on a schedule; a leaked key is the main residual risk of this
-option.
-
-### Option B — Workload Identity Federation (preferred long-term)
-
-No long-lived key at all: GitHub's OIDC token is exchanged for a short-lived
-access token.
-
-1. In GCP, create a workload identity pool + provider trusting this repository,
-   and a service account with `roles/datastore.user`.
-2. Allow the repository to impersonate it.
-3. Replace the "Write the service-account credential…" step with
-   `google-github-actions/auth@v2`, and keep `permissions: id-token: write`
-   (already set).
-
-The runner code does not change: it still reads
-`GOOGLE_APPLICATION_CREDENTIALS`, which that action populates.
+1. In the **staging** project `jntuh-notes-staging`, create a dedicated service
+   account, e.g. `jntuh-staging-collector@jntuh-notes-staging.iam.gserviceaccount.com`.
+2. Grant it **exactly one** role: the project-level custom role
+   `projects/jntuh-notes-staging/roles/jntuhCollectorStaging`, defined in
+   [`iam/collector-staging-role.json`](iam/collector-staging-role.json). It
+   allows only `datastore.entities.get`, `datastore.entities.create` and
+   `datastore.entities.update` — exactly the collector's operation surface.
+   **Do not** grant `roles/owner`, `roles/editor`, `roles/datastore.user` or
+   `firebase.admin`: they are broader and include document deletion and database
+   administration. [`SECURITY.md`](SECURITY.md) has the create, bind and verify
+   commands.
+3. Create a Workload Identity Pool and OIDC provider in the staging project.
+   Restrict the provider with an `--attribute-condition` to this repository and
+   the branch (or protected GitHub environment) that may stage notices; never
+   use a wildcard or empty condition. Allow only the matching
+   `principalSet://...` member to impersonate the service account, with the
+   single role **`roles/iam.workloadIdentityUser`**. Do not grant a broader
+   token-creator/impersonation role, a project-level Owner/Editor role, or any
+   other role beyond the custom Firestore role. [SECURITY.md](SECURITY.md) has
+   the exact provider, principal-set and binding commands.
+4. Add the repository **variables** (not secrets):
+   - `GCP_WORKLOAD_IDENTITY_PROVIDER` (the full provider resource name)
+   - `GCP_COLLECTOR_SERVICE_ACCOUNT`
+     (`jntuh-staging-collector@jntuh-notes-staging.iam.gserviceaccount.com`)
+   - `COLLECTOR_STAGING_ENABLED` (`true` to allow staging runs)
+5. The auth action writes a short-lived credential file and sets
+   `GOOGLE_APPLICATION_CREDENTIALS`; the runner code is unchanged.
 
 ### No credentials in the repository, ever
 
-- The workflow references the secret **by name** only.
+- The workflow references **variables** only; it does not read `secrets.*`.
 - No service-account JSON, key file, `.env` value or token is committed.
 - `runPolicy.test.mjs` and `scheduleWorkflow.test.mjs` fail the build if key
   material or an enabled `schedule:` trigger ever appears.
+- Production (`jntuh-notes-6ef74`) has no roles for the collector.
 
 ---
 
@@ -122,10 +153,12 @@ A staging run must pass all three; a dry run needs none:
    Only the owner can set it, and it is checked both by the workflow guard step
    and again, independently, by `collector/lib/runPolicy.mjs`.
 3. **Policy validation** — before the CLI is even started, the policy refuses a
-   staging run whose project id is not `jntuh-notes-6ef74`, that has a Firestore
-   emulator host set, that has no Application Default Credentials, that asks for
-   `--offline` (replaying a saved page instead of the live source), or that asks
-   for an unbounded/oversized `--max-items`.
+   staging run whose project id is not `jntuh-notes-staging`, whose production
+   project is requested, whose `COLLECTOR_DATABASE_ID` (if set at all) is anything
+   but `(default)`, that has a Firestore emulator host set, that has no
+   Application Default Credentials, that asks for `--offline` (replaying a saved
+   page instead of the live source), or that asks for an unbounded/oversized
+   `--max-items`.
 
 The scheduler cannot widen its own authority: it does not forward
 `process.argv` (it refuses unexpected arguments outright, so `--help` can never
@@ -171,14 +204,31 @@ it should be done until the rollout is explicitly approved.
    npm run build && npm run test:unit && npm run test:collector && npm run test:rules
    ```
 
-2. Create the service account and grant `roles/datastore.user` (Option A above),
-   then add the `FIREBASE_SERVICE_ACCOUNT` repository secret.
-3. Set the repository variable `COLLECTOR_STAGING_ENABLED=true`.
-4. Run the workflow once manually with `mode: dry-run` and read the log — it
+2. Create/deploy the **staging** project resources:
+   - Ensure the `jntuh-notes-staging` Firebase project exists with Firestore in
+     `(default)`.
+   - Deploy the staging rules/indexes:
+     `npm run deploy:rules:staging` (or `firebase --config firebase.staging.json deploy --only firestore:rules,firestore:indexes --project jntuh-notes-staging`).
+   - The collector cannot write anywhere until this exists.
+
+3. Create the service account and grant the custom role `jntuhCollectorStaging`
+   in **`jntuh-notes-staging`** only (no roles in `jntuh-notes-6ef74`). See
+   [`SECURITY.md`](SECURITY.md) for the exact commands and the least-privilege
+   role definition ([`iam/collector-staging-role.json`](iam/collector-staging-role.json)).
+
+4. Set up Workload Identity Federation for this repository in the staging
+   project and add the repository **variables**:
+   `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_COLLECTOR_SERVICE_ACCOUNT`, and
+   `COLLECTOR_STAGING_ENABLED=true`.
+
+5. Run the workflow once manually with `mode: dry-run` and read the log — it
    contacts the live official pages, parses them and writes nothing.
-5. Run it once with `mode: stage`, then open `/admin/ingest` and confirm the new
-   notices, the run report and the source health look right.
-6. Only then uncomment the `schedule:` block in
+
+6. Run it once with `mode: stage`, then open `/admin/ingest` and confirm the new
+   notices, the run report and the source health look right. You must sign in to
+   **both** the production and staging projects (the review UI handles this).
+
+7. Only then uncomment the `schedule:` block in
    `.github/workflows/collect-alerts.yml` and merge that change.
 
 Recommended: uncomment `environment: collector-staging` in the workflow and add
@@ -205,13 +255,13 @@ The runner and the collector are exercised locally against the Firestore
 network, no production data:
 
 ```bash
-# 1. start the emulator (demo- project id: firebase-tools refuses real projects)
+# 1. start the emulator in multi-project mode
 npx firebase --config firebase.e2e.json emulators:start --only firestore --project demo-jntuh-notes
 
 # 2. dry run against the saved pages (read-only, no credentials needed)
 COLLECTOR_OFFLINE_DIR=collector/tests/fixtures node collector/scheduledRun.mjs
 
-# 3. the emulator-backed end-to-end suite
+# 3. the emulator-backed end-to-end suite (two demo projects)
 npm run test:rules
 ```
 
@@ -227,7 +277,7 @@ $env:COLLECTOR_OFFLINE_DIR = "collector/tests/fixtures"
 node collector/scheduledRun.mjs
 Remove-Item Env:COLLECTOR_OFFLINE_DIR   # optional: leave the shell clean
 
-# 3. the emulator-backed end-to-end suite
+# 3. the emulator-backed end-to-end suite (two demo projects)
 npm run test:rules
 ```
 
@@ -235,13 +285,26 @@ Both do exactly what CI does minus the credential: with `COLLECTOR_MODE` unset
 the run is a `dry-run`. A **staging** run is deliberately refused while
 `FIRESTORE_EMULATOR_HOST` is set, so the emulator *write* path is exercised by
 `npm run test:rules` (and by the CLI directly:
-`node collector/index.mjs --write --emulator --project jntuh-notes-6ef74`),
+`node collector/index.mjs --write --emulator --project jntuh-notes-staging`),
 never through `scheduledRun.mjs`.
 
+### The emulator and the two-project split
+
+The Firestore emulator is started with `singleProjectMode: false`
+([`firebase.e2e.json`](../firebase.e2e.json)) so both demo projects can run side
+by side. The rules tests ([`tests/rules/emulatorDb.mjs`](tests/rules/emulatorDb.mjs))
+load `firestore.rules` into `demo-jntuh-notes` and `firestore.staging.rules` into
+`demo-jntuh-notes-staging` explicitly over the REST API and clear each project
+separately. That matches the deployed two-project layout. If the emulator's
+behaviour changes these tests fail loudly rather than passing silently; see
+[`SECURITY.md`](SECURITY.md).
+
 The policy itself is covered by
-[`collector/tests/runPolicy.test.mjs`](tests/runPolicy.test.mjs), and the workflow
-file (no timer, no secrets, least privilege) by
-[`collector/tests/scheduleWorkflow.test.mjs`](tests/scheduleWorkflow.test.mjs).
+[`collector/tests/runPolicy.test.mjs`](tests/runPolicy.test.mjs), the workflow
+file (WIF only, no secrets, least privilege, staging project only) by
+[`collector/tests/scheduleWorkflow.test.mjs`](tests/scheduleWorkflow.test.mjs),
+and the project boundary — code, config, rules, and the frontend — by
+[`collector/tests/stagingDatabase.test.mjs`](tests/stagingDatabase.test.mjs).
 
 ---
 

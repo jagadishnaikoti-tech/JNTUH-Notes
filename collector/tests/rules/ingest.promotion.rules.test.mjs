@@ -1,14 +1,20 @@
 // ---------------------------------------------------------------------------
-// Integration tests for atomic promotion (src/lib/ingest.js) against the REAL
-// Firestore emulator and the REAL firestore.rules.
+// Integration tests for promotion (src/lib/ingest.js) against the REAL Firestore
+// emulator, the REAL two-project layout and BOTH real rulesets.
 //
-// These prove what the mocked unit tests cannot: that the promotion transaction
-// is accepted by the security rules (the alert draft passes `validAlert` and the
-// staged-item update passes the review-field-only rule), that it is atomic and
-// that it is idempotent even when two promotions race.
+// Promotion crosses projects: the staged notice lives in the
+// `demo-jntuh-notes-staging` project (firestore.staging.rules) and the draft
+// alert it creates lives in `demo-jntuh-notes` (firestore.rules). These tests
+// prove what the mocked unit tests cannot:
+//   * the alert draft is accepted by `validAlert` in production;
+//   * the staged-item claim is accepted by the review-field-only rule in staging;
+//   * the two steps are idempotent: a repeat, and a race, still produce exactly
+//     one alert;
+//   * nothing is ever published and the public cannot read the draft;
+//   * upstream failures leave both documents as they were.
 //
-// The project id is a `demo-` id on purpose: firebase-tools refuses to talk to a
-// real project for `demo-*` ids, so this suite can never touch live data.
+// The project ids are `demo-` ids on purpose: firebase-tools refuses to talk to
+// a real project for `demo-*` ids, so this suite can never touch live data.
 //
 // Run with `npm run test:rules` (wrapped in `firebase emulators:exec`).
 // ---------------------------------------------------------------------------
@@ -19,34 +25,45 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, beforeEach, describe, it } from "node:test";
 
-import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import * as firestoreSdk from "firebase/firestore";
 
-import { promoteIngestItem } from "../../../src/lib/ingest.js";
+import { promoteIngestItem, promotionAlertId } from "../../../src/lib/ingest.js";
+import {
+  DEFAULT_DATABASE,
+  STAGING_PROJECT,
+  clearDatabase,
+  emulatorEndpoint,
+  loadRules,
+  makeDbEnv,
+} from "./emulatorDb.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const RULES = readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
+const STAGING_RULES = readFileSync(path.join(ROOT, "firestore.staging.rules"), "utf8");
+const PUBLIC_RULES = readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
 
 const PROJECT_ID = "demo-jntuh-notes";
-const EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
-const [host, portRaw] = EMULATOR_HOST.split(":");
-const port = Number(portRaw);
+const { host, port } = emulatorEndpoint();
 
-let testEnv;
+const STAGING = { projectId: STAGING_PROJECT, databaseId: DEFAULT_DATABASE, host, port };
+const DEFAULTS = { projectId: PROJECT_ID, databaseId: DEFAULT_DATABASE, host, port };
+
+let staging;
+let defaults;
 
 before(async () => {
-  testEnv = await initializeTestEnvironment({
-    projectId: PROJECT_ID,
-    firestore: { rules: RULES, host, port },
-  });
+  await loadRules({ ...STAGING, rules: STAGING_RULES });
+  await loadRules({ ...DEFAULTS, rules: PUBLIC_RULES });
+  staging = makeDbEnv(STAGING);
+  defaults = makeDbEnv(DEFAULTS);
 });
 
 after(async () => {
-  if (testEnv) await testEnv.cleanup();
+  await Promise.all([staging.cleanup(), defaults.cleanup()]);
 });
 
 beforeEach(async () => {
-  await testEnv.clearFirestore();
+  await clearDatabase(STAGING);
+  await clearDatabase(DEFAULTS);
 });
 
 const ITEM_ID = "item-1";
@@ -84,46 +101,37 @@ const VALID_INPUT = {
   pinned: false,
 };
 
-/** Seed a document bypassing the rules (what the collector does via Admin SDK). */
-async function seed(pathSegments, data) {
-  await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await firestoreSdk.setDoc(firestoreSdk.doc(ctx.firestore(), ...pathSegments), data);
-  });
-}
+/**
+ * An injected context that mirrors production: the ingest client reads/writes
+ * the staging-project `db` and the promotion creates the alert through the
+ * production-project `alertsDb`. Both are rules-enforced clients.
+ */
+const contextFor = (db, alertsDb) => ({ context: { db, alertsDb, sdk: firestoreSdk } });
+const adminContext = () => contextFor(staging.admin, defaults.admin);
+const nonAdminContext = () => contextFor(staging.nonAdmin, defaults.nonAdmin);
 
-/** An admin-authenticated Firestore instance wrapped as an ingest context. */
-function adminContext() {
-  return testEnv.authenticatedContext("admin-1", { admin: true }).firestore();
-}
-function nonAdminContext() {
-  return testEnv.authenticatedContext("student-1", { admin: false }).firestore();
-}
-function anonContext() {
-  return testEnv.unauthenticatedContext().firestore();
-}
-const contextFor = (db) => ({ context: { db, sdk: firestoreSdk } });
+/** Read the alert from the PRODUCTION project, as an admin. */
+const readAlert = (id) => defaults.get(["alerts", id]);
+/** Read a staged item from the STAGING project, as an admin. */
+const readItem = (id) => staging.get(["ingestItems", id]);
 
 const ADMIN = { actor: "admin@jntuh.example" };
 
-describe("promotion under the real rules is atomic and idempotent", () => {
-  it("creates exactly one private draft and records the promotion on the item", async () => {
-    await seed(["ingestItems", ITEM_ID], ITEM_DOC);
-    const db = adminContext();
+describe("promotion under the real rules is atomic and idempotent across projects", () => {
+  it("creates exactly one private draft in production and records the promotion on the staging item", async () => {
+    await staging.seed(["ingestItems", ITEM_ID], ITEM_DOC);
 
     const result = await promoteIngestItem(
       { itemId: ITEM_ID, input: VALID_INPUT, ...ADMIN },
-      contextFor(db)
+      adminContext()
     );
 
     assert.equal(result.created, true);
-    assert.ok(result.alertId, "an alert id is returned");
+    assert.equal(result.alertId, promotionAlertId(ITEM_ID), "the id is derived from the notice");
 
-    // The alert draft exists and passes the rules' validAlert() gate.
-    const alert = await firestoreSdk.getDoc(
-      firestoreSdk.doc(db, "alerts", result.alertId)
-    );
-    assert.equal(alert.exists(), true);
-    const alertData = alert.data();
+    // The alert draft exists in the PRODUCTION project and passes validAlert().
+    const alertData = await readAlert(result.alertId);
+    assert.ok(alertData, "the draft was written to production");
     assert.equal(alertData.status, "draft");
     assert.equal(alertData.verifiedAt, null);
     assert.equal(alertData.verifiedBy, "");
@@ -131,111 +139,139 @@ describe("promotion under the real rules is atomic and idempotent", () => {
     assert.equal(alertData.summary, VALID_INPUT.summary);
     assert.equal(alertData.createdBy, ADMIN.actor);
 
-    // The staged item is linked to the new draft.
-    const item = await firestoreSdk.getDoc(
-      firestoreSdk.doc(db, "ingestItems", ITEM_ID)
-    );
-    const itemData = item.data();
+    // The staged item is linked to the new draft, in the STAGING project.
+    const itemData = await readItem(ITEM_ID);
     assert.equal(itemData.reviewState, "promoted");
     assert.equal(itemData.promotedAlertId, result.alertId);
     assert.equal(itemData.promotedBy, ADMIN.actor);
     assert.ok(itemData.promotedAt, "promotedAt was written as a server timestamp");
+
+    // The alert never landed in staging, and no staging collection leaked into
+    // the production project.
+    assert.equal(await staging.count("alerts"), 0);
+    assert.equal(await defaults.count("ingestItems"), 0);
   });
 
   it("does not expose the promoted draft to anonymous visitors", async () => {
-    await seed(["ingestItems", ITEM_ID], ITEM_DOC);
+    await staging.seed(["ingestItems", ITEM_ID], ITEM_DOC);
     const result = await promoteIngestItem(
       { itemId: ITEM_ID, input: VALID_INPUT, ...ADMIN },
-      contextFor(adminContext())
+      adminContext()
     );
 
     // A draft must never be publicly readable - there is no auto-publish.
     await assert.rejects(
-      firestoreSdk.getDoc(firestoreSdk.doc(anonContext(), "alerts", result.alertId))
+      firestoreSdk.getDoc(firestoreSdk.doc(defaults.anon, "alerts", result.alertId))
     );
   });
 
   it("returns the same alert id on a repeated promotion and creates no second alert", async () => {
-    await seed(["ingestItems", ITEM_ID], ITEM_DOC);
-    const db = adminContext();
+    await staging.seed(["ingestItems", ITEM_ID], ITEM_DOC);
 
     const first = await promoteIngestItem(
       { itemId: ITEM_ID, input: VALID_INPUT, ...ADMIN },
-      contextFor(db)
+      adminContext()
     );
     const second = await promoteIngestItem(
       { itemId: ITEM_ID, input: VALID_INPUT, ...ADMIN },
-      contextFor(db)
+      adminContext()
     );
 
     assert.equal(first.created, true);
     assert.equal(second.created, false);
     assert.equal(second.alertId, first.alertId);
 
-    const alerts = await firestoreSdk.getDocs(firestoreSdk.collection(db, "alerts"));
-    assert.equal(alerts.size, 1, "no second alert was created");
+    assert.equal(await defaults.count("alerts"), 1, "no second alert was created");
   });
 
   it("creates exactly one alert when two promotions race", async () => {
-    await seed(["ingestItems", ITEM_ID], ITEM_DOC);
-    const db = adminContext();
+    await staging.seed(["ingestItems", ITEM_ID], ITEM_DOC);
 
     const [a, b] = await Promise.all([
-      promoteIngestItem({ itemId: ITEM_ID, input: VALID_INPUT, ...ADMIN }, contextFor(db)),
-      promoteIngestItem({ itemId: ITEM_ID, input: VALID_INPUT, ...ADMIN }, contextFor(db)),
+      promoteIngestItem({ itemId: ITEM_ID, input: VALID_INPUT, ...ADMIN }, adminContext()),
+      promoteIngestItem({ itemId: ITEM_ID, input: VALID_INPUT, ...ADMIN }, adminContext()),
     ]);
 
     assert.equal(a.alertId, b.alertId, "both callers agree on the single alert");
-
-    const alerts = await firestoreSdk.getDocs(firestoreSdk.collection(db, "alerts"));
-    assert.equal(alerts.size, 1, "exactly one alert document exists");
-
-    // Exactly one of the two calls did the creating.
+    assert.equal(await defaults.count("alerts"), 1, "exactly one alert document exists");
     assert.equal([a.created, b.created].filter(Boolean).length, 1);
+
+    const itemData = await readItem(ITEM_ID);
+    assert.equal(itemData.reviewState, "promoted");
+    assert.equal(itemData.promotedAlertId, a.alertId);
+  });
+
+  it("heals a half-finished promotion: the draft exists but the item was never claimed", async () => {
+    // Simulate a failure between step 4 (create draft) and step 5 (claim item):
+    // the alert exists with the deterministic id, the item is untouched.
+    const alertId = promotionAlertId(ITEM_ID);
+    await defaults.seed(["alerts", alertId], {
+      title: "Fee notification for II semester",
+      summary: "Already created by the interrupted attempt.",
+      category: "general",
+      sourceName: "JNTUH Notifications",
+      sourceUrl: "https://jntuh.ac.in/uploads/notifications/a.pdf",
+      status: "draft",
+      pinned: false,
+      verifiedAt: null,
+      verifiedBy: "",
+      createdBy: "admin@jntuh.example",
+      updatedBy: "admin@jntuh.example",
+      createdAt: new Date("2026-10-17T00:00:00Z"),
+      updatedAt: new Date("2026-10-17T00:00:00Z"),
+      schemaVersion: 1,
+    });
+    await staging.seed(["ingestItems", ITEM_ID], ITEM_DOC);
+
+    const result = await promoteIngestItem(
+      { itemId: ITEM_ID, input: VALID_INPUT, ...ADMIN },
+      adminContext()
+    );
+
+    assert.equal(result.alertId, alertId);
+    assert.equal(result.created, false, "the existing draft is never overwritten");
+    assert.equal(await defaults.count("alerts"), 1, "the retry did not fork a second draft");
+    // ...and the retry still finishes the job by claiming the item.
+    const itemData = await readItem(ITEM_ID);
+    assert.equal(itemData.reviewState, "promoted");
+    assert.equal(itemData.promotedAlertId, alertId);
   });
 
   it("rejects a missing summary and leaves both documents untouched", async () => {
-    await seed(["ingestItems", ITEM_ID], ITEM_DOC);
-    const db = adminContext();
+    await staging.seed(["ingestItems", ITEM_ID], ITEM_DOC);
 
     await assert.rejects(
       promoteIngestItem(
         { itemId: ITEM_ID, input: { ...VALID_INPUT, summary: "" }, ...ADMIN },
-        contextFor(db)
+        adminContext()
       ),
       /summary/i
     );
 
-    const alerts = await firestoreSdk.getDocs(firestoreSdk.collection(db, "alerts"));
-    assert.equal(alerts.size, 0);
-
-    const item = await firestoreSdk.getDoc(firestoreSdk.doc(db, "ingestItems", ITEM_ID));
-    assert.equal(item.data().reviewState, "new");
+    assert.equal(await defaults.count("alerts"), 0);
+    assert.equal((await readItem(ITEM_ID)).reviewState, "new");
   });
 
-  it("cannot be performed by a non-admin (rules deny the transaction)", async () => {
-    await seed(["ingestItems", ITEM_ID], ITEM_DOC);
+  it("cannot be performed by a non-admin (rules deny the staging read)", async () => {
+    await staging.seed(["ingestItems", ITEM_ID], ITEM_DOC);
 
     await assert.rejects(
       promoteIngestItem(
         { itemId: ITEM_ID, input: VALID_INPUT, actor: "student@jntuh.example" },
-        contextFor(nonAdminContext())
+        nonAdminContext()
       ),
       (err) => err.code === "permission-denied" || /permission/i.test(err.message)
     );
 
-    const db = adminContext();
-    const alerts = await firestoreSdk.getDocs(firestoreSdk.collection(db, "alerts"));
-    assert.equal(alerts.size, 0);
-    const item = await firestoreSdk.getDoc(firestoreSdk.doc(db, "ingestItems", ITEM_ID));
-    assert.equal(item.data().reviewState, "new");
+    assert.equal(await defaults.count("alerts"), 0);
+    assert.equal((await readItem(ITEM_ID)).reviewState, "new");
   });
 
   it("fails clearly when the staged notice does not exist", async () => {
     await assert.rejects(
       promoteIngestItem(
         { itemId: "missing", input: VALID_INPUT, ...ADMIN },
-        contextFor(adminContext())
+        adminContext()
       ),
       (err) => err.code === "not-found" && /no longer exists/i.test(err.message)
     );

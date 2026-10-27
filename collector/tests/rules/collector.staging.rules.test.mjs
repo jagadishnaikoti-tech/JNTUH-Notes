@@ -1,22 +1,24 @@
 // ---------------------------------------------------------------------------
-// Automatic collection into staging: new notice, duplicate re-run, and an
-// unavailable source - against the REAL Firestore emulator and the REAL
-// firestore.rules.
+// Automatic collection into the STAGING PROJECT: new notice, duplicate re-run,
+// and an unavailable source - against the REAL Firestore emulator, the REAL
+// firestore.staging.rules, and the REAL two-project layout.
 //
 // This is the scheduling phase's local proof (validation items 1-3):
 //
-//   1. a new notice is collected into `ingestItems`;
+//   1. a new notice is collected into `ingestItems` in the `jntuh-notes-staging`
+//      project's `(default)` database;
 //   2. running again with the same notice creates no duplicate candidate, and a
 //      notice a human already dismissed is never resurrected;
 //   3. an unavailable source is reported accurately - as a failed run and a
 //      degraded health record with a redacted error - not as a clean collection;
-//   4. and staging never touches the public `alerts` collection.
+//   4. and staging never touches the public `alerts` collection, in either
+//      project.
 //
 // It drives the collector's real write path (planRun + executeRun through the
 // allowlisted Admin SDK store) with in-memory notices, so it needs no network.
 //
-// The project id is a `demo-` id on purpose: firebase-tools refuses to talk to a
-// real project for `demo-*` ids, so this suite can never touch live data.
+// The project ids are `demo-` ids on purpose: firebase-tools refuses to talk to
+// a real project for `demo-*` ids, so this suite can never touch live data.
 //
 // Run with `npm run test:rules` (wrapped in `firebase emulators:exec`).
 // ---------------------------------------------------------------------------
@@ -28,67 +30,79 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 
-import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import * as firestoreSdk from "firebase/firestore";
 
 import { INGEST_COLLECTIONS, REVIEW_STATE, ignoreIngestItem } from "../../../src/lib/ingest.js";
 import { createIngestStore } from "../../lib/firestoreAdmin.mjs";
 import { executeRun, itemIdsForSources, planRun } from "../../write.mjs";
+import {
+  DEFAULT_DATABASE,
+  STAGING_PROJECT,
+  clearDatabase,
+  emulatorEndpoint,
+  loadRules,
+  makeDbEnv,
+} from "./emulatorDb.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const RULES = readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
+const STAGING_RULES = readFileSync(path.join(ROOT, "firestore.staging.rules"), "utf8");
+const PUBLIC_RULES = readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
 
 const PROJECT_ID = "demo-jntuh-notes";
-const EMULATOR_HOST = process.env.FIRESTORE_EMULATOR_HOST ?? "127.0.0.1:8080";
-const [host, portRaw] = EMULATOR_HOST.split(":");
-const port = Number(portRaw);
+const { host, port } = emulatorEndpoint();
+const EMULATOR_HOST = `${host}:${port}`;
+
+const STAGING = { projectId: STAGING_PROJECT, databaseId: DEFAULT_DATABASE, host, port };
+const DEFAULTS = { projectId: PROJECT_ID, databaseId: DEFAULT_DATABASE, host, port };
 
 const SOURCE_ID = "notifications";
 const CANONICAL_A = "https://jntuh.ac.in/uploads/notifications/collector-staging-a.pdf";
 const CANONICAL_B = "https://jntuh.ac.in/uploads/notifications/collector-staging-b.pdf";
 
-let testEnv;
+let staging;
+let defaults;
 
 before(async () => {
-  testEnv = await initializeTestEnvironment({
-    projectId: PROJECT_ID,
-    firestore: { rules: RULES, host, port },
-  });
+  await loadRules({ ...STAGING, rules: STAGING_RULES });
+  await loadRules({ ...DEFAULTS, rules: PUBLIC_RULES });
+  staging = makeDbEnv(STAGING);
+  defaults = makeDbEnv(DEFAULTS);
 });
 
 beforeEach(async () => {
-  await testEnv.clearFirestore();
+  await clearDatabase(STAGING);
+  await clearDatabase(DEFAULTS);
 });
 
 afterEach(async () => {
-  await testEnv.clearFirestore();
+  await clearDatabase(STAGING);
+  await clearDatabase(DEFAULTS);
 });
 
 after(async () => {
-  await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    const db = ctx.firestore();
+  // The test must not leave debris behind in either database.
+  for (const env of [staging, defaults]) {
     for (const collection of Object.values(INGEST_COLLECTIONS)) {
-      const snap = await firestoreSdk.getDocs(firestoreSdk.collection(db, collection));
-      assert.equal(snap.size, 0, `temporary ${collection} documents remain`);
+      assert.equal(await env.count(collection), 0, `temporary ${collection} documents remain`);
     }
-    const alerts = await firestoreSdk.getDocs(firestoreSdk.collection(db, "alerts"));
-    assert.equal(alerts.size, 0, "temporary alerts documents remain");
-  });
-  await testEnv.cleanup();
+  }
+  assert.equal(await staging.count("alerts"), 0, "temporary staging alerts remain");
+  assert.equal(await defaults.count("alerts"), 0, "temporary public alerts remain");
+  await Promise.all([staging.cleanup(), defaults.cleanup()]);
 });
 
-function adminContext() {
-  return testEnv.authenticatedContext("admin-1", { admin: true }).firestore();
-}
+/** The admin client, on the staging project, with the admin claim. */
+const adminContext = () => staging.admin;
 
-const contextFor = (db) => ({ context: { db, sdk: firestoreSdk } });
+/** An injected context: staging-project `db`, production-project `alertsDb`. */
+const contextFor = (db) => ({ context: { db, alertsDb: defaults.admin, sdk: firestoreSdk } });
 
 /** The collector's allowlisted Admin SDK store, pointed at the emulator. */
 function makeStore() {
   return createIngestStore({
-    projectId: PROJECT_ID,
+    projectId: STAGING_PROJECT,
     emulator: true,
-    allowedProjects: [PROJECT_ID],
+    allowedProjects: [STAGING_PROJECT],
     // Only the emulator host is supplied, so an ambient GOOGLE_CLOUD_PROJECT
     // cannot trip the collector's own project check.
     env: { FIRESTORE_EMULATOR_HOST: EMULATOR_HOST },
@@ -158,7 +172,8 @@ async function runCollector(store, sources, maxItems = 10) {
     trigger: "manual",
     actor: "collector-staging-test",
     dryRun: false,
-    projectId: PROJECT_ID,
+    projectId: STAGING_PROJECT,
+    databaseId: store.databaseId,
     maxItems,
   });
   assert.equal(plan.refused, false, "the staging plan must not be refused");
@@ -166,27 +181,35 @@ async function runCollector(store, sources, maxItems = 10) {
   return { runId, plan };
 }
 
-async function counts(db) {
-  const items = await firestoreSdk.getDocs(firestoreSdk.collection(db, INGEST_COLLECTIONS.ITEMS));
-  const alerts = await firestoreSdk.getDocs(firestoreSdk.collection(db, "alerts"));
-  return { items: items.size, alerts: alerts.size };
-}
+describe("the collector's store is pinned to the staging project", () => {
+  it("reports staging as its project/database and echoes them into the run document", async () => {
+    const store = makeStore();
+    try {
+      assert.equal(store.projectId, STAGING_PROJECT);
+      assert.equal(store.databaseId, DEFAULT_DATABASE);
+      const { runId } = await runCollector(store, [healthySource()]);
+      const run = await staging.get([INGEST_COLLECTIONS.RUNS, runId]);
+      assert.equal(run.databaseId, DEFAULT_DATABASE, "the audit trail records the database it wrote to");
+      assert.equal(run.projectId, STAGING_PROJECT, "the audit trail records the project it wrote to");
+    } finally {
+      await store.close();
+    }
+  });
+});
 
 describe("scheduled collection stages notices, de-duplicates, and reports failures honestly", () => {
   it("collects a new notice into staging without creating an alert", async () => {
     const store = makeStore();
     try {
       const { runId, plan } = await runCollector(store, [healthySource()]);
-      const db = adminContext();
 
       assert.equal(plan.counts.itemsCreated, 2, "both unknown notices are created");
       assert.equal(plan.counts.sourcesOk, 1);
       assert.equal(plan.status, "ok");
 
-      const staged = await firestoreSdk.getDocs(firestoreSdk.collection(db, INGEST_COLLECTIONS.ITEMS));
-      assert.equal(staged.size, 2);
-      for (const doc of staged.docs) {
-        const data = doc.data();
+      const staged = await staging.docs(INGEST_COLLECTIONS.ITEMS);
+      assert.equal(staged.length, 2);
+      for (const { data } of staged) {
         assert.equal(data.reviewState, REVIEW_STATE.NEW);
         assert.equal(data.lastRunId, runId);
         assert.equal(data.sourceId, SOURCE_ID);
@@ -195,15 +218,19 @@ describe("scheduled collection stages notices, de-duplicates, and reports failur
         assert.equal(data.status, undefined, "a staged item is not an alert record");
       }
 
-      const run = await firestoreSdk.getDoc(firestoreSdk.doc(db, INGEST_COLLECTIONS.RUNS, runId));
-      assert.equal(run.exists(), true);
-      assert.equal(run.data().status, "ok");
+      const run = await staging.get([INGEST_COLLECTIONS.RUNS, runId]);
+      assert.equal(run.status, "ok");
 
-      const health = await firestoreSdk.getDoc(firestoreSdk.doc(db, INGEST_COLLECTIONS.HEALTH, SOURCE_ID));
-      assert.equal(health.data().status, "ok");
-      assert.equal(health.data().consecutiveFailures, 0);
+      const health = await staging.get([INGEST_COLLECTIONS.HEALTH, SOURCE_ID]);
+      assert.equal(health.status, "ok");
+      assert.equal(health.consecutiveFailures, 0);
 
-      assert.equal((await counts(db)).alerts, 0, "collection staging never creates an alert");
+      assert.equal(await staging.count("alerts"), 0, "collection staging never creates an alert in staging");
+      // Nothing leaked into the production project, under any name.
+      assert.equal(await defaults.count(INGEST_COLLECTIONS.ITEMS), 0);
+      assert.equal(await defaults.count(INGEST_COLLECTIONS.RUNS), 0);
+      assert.equal(await defaults.count(INGEST_COLLECTIONS.HEALTH), 0);
+      assert.equal(await defaults.count("alerts"), 0);
     } finally {
       await store.close();
     }
@@ -213,14 +240,13 @@ describe("scheduled collection stages notices, de-duplicates, and reports failur
     const store = makeStore();
     try {
       await runCollector(store, [healthySource()]);
-      const db = adminContext();
 
-      const first = await firestoreSdk.getDocs(firestoreSdk.collection(db, INGEST_COLLECTIONS.ITEMS));
-      const idsBefore = first.docs.map((d) => d.id).sort();
+      const first = await staging.docs(INGEST_COLLECTIONS.ITEMS);
+      const idsBefore = first.map((d) => d.id).sort();
       assert.equal(idsBefore.length, 2);
 
-      // An administrator dismisses one of them.
-      await ignoreIngestItem({ itemId: idsBefore[0] }, contextFor(db));
+      // An administrator dismisses one of them, through the rules, in staging.
+      await ignoreIngestItem({ itemId: idsBefore[0] }, contextFor(adminContext()));
 
       // A second run sees exactly the same notices (a retry, or the source
       // being polled again before anything changed).
@@ -229,20 +255,17 @@ describe("scheduled collection stages notices, de-duplicates, and reports failur
       assert.equal(second.plan.counts.itemsRefreshed, 2);
       assert.ok(second.plan.counts.itemsSkipped >= 0);
 
-      const after = await firestoreSdk.getDocs(firestoreSdk.collection(db, INGEST_COLLECTIONS.ITEMS));
-      assert.deepEqual(after.docs.map((d) => d.id).sort(), idsBefore, "the item ids did not change");
+      const afterIds = (await staging.docs(INGEST_COLLECTIONS.ITEMS)).map((d) => d.id).sort();
+      assert.deepEqual(afterIds, idsBefore, "the item ids did not change");
 
-      const refreshed = await firestoreSdk.getDoc(
-        firestoreSdk.doc(db, INGEST_COLLECTIONS.ITEMS, idsBefore[0])
-      );
-      assert.equal(refreshed.data().reviewState, REVIEW_STATE.IGNORED, "a dismissed notice stays dismissed");
-      assert.equal(refreshed.data().seenCount, 2);
+      const refreshed = await staging.get([INGEST_COLLECTIONS.ITEMS, idsBefore[0]]);
+      assert.equal(refreshed.reviewState, REVIEW_STATE.IGNORED, "a dismissed notice stays dismissed");
+      assert.equal(refreshed.seenCount, 2);
 
-      const queued = await firestoreSdk.getDoc(
-        firestoreSdk.doc(db, INGEST_COLLECTIONS.ITEMS, idsBefore[1])
-      );
-      assert.equal(queued.data().reviewState, REVIEW_STATE.NEW, "the untouched notice is still in review");
-      assert.equal((await counts(db)).alerts, 0);
+      const queued = await staging.get([INGEST_COLLECTIONS.ITEMS, idsBefore[1]]);
+      assert.equal(queued.reviewState, REVIEW_STATE.NEW, "the untouched notice is still in review");
+      assert.equal(await staging.count("alerts"), 0);
+      assert.equal(await defaults.count(INGEST_COLLECTIONS.ITEMS), 0);
     } finally {
       await store.close();
     }
@@ -252,28 +275,28 @@ describe("scheduled collection stages notices, de-duplicates, and reports failur
     const store = makeStore();
     try {
       const { runId, plan } = await runCollector(store, [failedSource()]);
-      const db = adminContext();
 
       assert.equal(plan.status, "failed", "the run is failed when the only source failed");
       assert.equal(plan.counts.sourcesFailed, 1);
       assert.equal(plan.counts.itemsCreated, 0, "an unavailable source stages nothing");
 
-      const run = await firestoreSdk.getDoc(firestoreSdk.doc(db, INGEST_COLLECTIONS.RUNS, runId));
-      assert.equal(run.data().status, "failed");
+      const run = await staging.get([INGEST_COLLECTIONS.RUNS, runId]);
+      assert.equal(run.status, "failed");
 
-      const health = await firestoreSdk.getDoc(firestoreSdk.doc(db, INGEST_COLLECTIONS.HEALTH, SOURCE_ID));
-      assert.equal(health.data().status, "degraded", "fewer than three failures in a row is degraded");
-      assert.equal(health.data().lastOutcome, "failed");
-      assert.equal(health.data().consecutiveFailures, 1);
-      assert.equal(health.data().totalFailures, 1);
-      assert.ok(health.data().lastError?.message, "the failure reason is recorded");
+      const health = await staging.get([INGEST_COLLECTIONS.HEALTH, SOURCE_ID]);
+      assert.equal(health.status, "degraded", "fewer than three failures in a row is degraded");
+      assert.equal(health.lastOutcome, "failed");
+      assert.equal(health.consecutiveFailures, 1);
+      assert.equal(health.totalFailures, 1);
+      assert.ok(health.lastError?.message, "the failure reason is recorded");
       assert.ok(
-        !health.data().lastError.message.includes("firebase-adminsdk"),
+        !health.lastError.message.includes("firebase-adminsdk"),
         "a credential-like path in an error is redacted before it is stored"
       );
 
-      assert.equal((await counts(db)).items, 0, "no candidate is invented for an unavailable source");
-      assert.equal((await counts(db)).alerts, 0);
+      assert.equal(await staging.count(INGEST_COLLECTIONS.ITEMS), 0, "no candidate is invented for an unavailable source");
+      assert.equal(await staging.count("alerts"), 0);
+      assert.equal(await defaults.count("alerts"), 0);
     } finally {
       await store.close();
     }

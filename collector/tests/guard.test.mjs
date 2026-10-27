@@ -192,7 +192,8 @@ test("the CLI still defaults to a read-only dry run", () => {
   assert.match(source, /firestoreInitialised:\s*false/, "the report must still declare no Firestore init");
   // The gating messages must be present so the guards cannot be removed silently.
   assert.match(source, /--write requires --project/);
-  assert.match(source, /production writes require --allow-production/i);
+  assert.match(source, /refusing the production project/i);
+  assert.match(source, /live writes require --allow-production/i);
 });
 
 test("the CLI advertises its dry-run default and guarded write mode in --help", () => {

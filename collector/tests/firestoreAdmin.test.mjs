@@ -2,8 +2,12 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
 import {
+  PRODUCTION_PROJECT_ID,
   STAGING_COLLECTION_NAMES,
+  STAGING_DATABASE_ID,
+  STAGING_PROJECT_ID,
   isStagingCollection,
+  resolveDatabaseId,
 } from "../lib/runReport.mjs";
 import {
   createIngestStore,
@@ -17,6 +21,36 @@ test("isStagingCollection accepts only staging collections", () => {
   for (const name of STAGING_COLLECTION_NAMES) assert.ok(isStagingCollection(name));
   assert.ok(!isStagingCollection("alerts"));
   assert.ok(!isStagingCollection("analyticsEvents"));
+});
+
+test("resolveDatabaseId pins the staging project's (default) database", () => {
+  assert.equal(STAGING_DATABASE_ID, "(default)");
+  // The default when nothing is requested is the only acceptable database.
+  assert.equal(resolveDatabaseId(), "(default)");
+  assert.equal(resolveDatabaseId("(default)"), "(default)");
+  assert.equal(resolveDatabaseId("  (default)  "), "(default)");
+
+  // Named databases are refused: the project, not a database name, is the
+  // isolation boundary.
+  for (const unsafe of [
+    "staging",
+    "default",
+    "",
+    "   ",
+    null,
+    "STAGING",
+    "staging-2",
+    "staging.x",
+    "a",
+    "x".repeat(64),
+    "prod",
+  ]) {
+    assert.throws(
+      () => resolveDatabaseId(unsafe),
+      /database/i,
+      `expected ${JSON.stringify(unsafe)} to be refused`,
+    );
+  }
 });
 
 test("isTransientFirestoreError handles numbers, strings, syscalls and cause", () => {
@@ -72,18 +106,48 @@ test("retryWithBackoff does not retry non-transient errors", async () => {
   }
 });
 
-test("resolveProjectId validates allowed projects", () => {
-  const ok = resolveProjectId({ requested: "jntuh-notes-6ef74", env: {} });
+test("resolveProjectId accepts only the staging project", () => {
+  const ok = resolveProjectId({ requested: STAGING_PROJECT_ID, env: {} });
   assert.equal(ok.ok, true);
-  assert.equal(ok.wanted, "jntuh-notes-6ef74");
+  assert.equal(ok.wanted, STAGING_PROJECT_ID);
 
   const bad = resolveProjectId({ requested: "wrong-project", env: {} });
   assert.equal(bad.ok, false);
   assert.match(bad.reason, /unknown project/);
 });
 
+test("resolveProjectId refuses the production project unconditionally", () => {
+  // Even an injected allowlist that contains production cannot widen the
+  // boundary. This is the code-level half of the IAM separation.
+  const injected = resolveProjectId({
+    requested: PRODUCTION_PROJECT_ID,
+    env: {},
+    allowed: [STAGING_PROJECT_ID, PRODUCTION_PROJECT_ID],
+  });
+  assert.equal(injected.ok, false);
+  assert.match(injected.reason, /production/);
+
+  const plain = resolveProjectId({ requested: PRODUCTION_PROJECT_ID, env: {} });
+  assert.equal(plain.ok, false);
+  assert.match(plain.reason, /production/);
+});
+
+test("resolveProjectId refuses an environment pointed at production", () => {
+  for (const name of ["GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT", "FIREBASE_PROJECT_ID"]) {
+    const refused = resolveProjectId({
+      requested: STAGING_PROJECT_ID,
+      env: { [name]: PRODUCTION_PROJECT_ID },
+    });
+    assert.equal(refused.ok, false, `${name} pointing at production must be refused`);
+    assert.match(refused.reason, /production/);
+  }
+});
+
 test("resolveProjectId detects environment mismatch", () => {
-  const mismatch = resolveProjectId({ requested: "jntuh-notes-6ef74", env: { GCLOUD_PROJECT: "other" } });
+  const mismatch = resolveProjectId({
+    requested: STAGING_PROJECT_ID,
+    env: { GCLOUD_PROJECT: "other" },
+  });
   assert.equal(mismatch.ok, false);
   assert.match(mismatch.reason, /mismatch/);
 });
@@ -101,9 +165,77 @@ test("parseEmulatorHost validates format", () => {
   assert.equal(weird.ok, false);
 });
 
-test("createIngestStore throws without valid project/flags", () => {
+test("createIngestStore throws without a valid staging project/flags", () => {
   assert.throws(() => createIngestStore({ projectId: undefined }));
   assert.throws(() => createIngestStore({ projectId: "wrong" }));
-  assert.throws(() => createIngestStore({ projectId: "jntuh-notes-6ef74", emulator: true, env: {} }));
-  assert.throws(() => createIngestStore({ projectId: "jntuh-notes-6ef74", emulator: false, env: { FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080" } }));
+  // Production is refused before an app or credential is created...
+  assert.throws(() =>
+    createIngestStore({ projectId: PRODUCTION_PROJECT_ID, emulator: true, env: {} })
+  );
+  assert.throws(() =>
+    createIngestStore({
+      projectId: PRODUCTION_PROJECT_ID,
+      emulator: false,
+      env: { FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080" },
+    })
+  );
+  // ...and the emulator/live modes are mutually exclusive.
+  assert.throws(() =>
+    createIngestStore({ projectId: STAGING_PROJECT_ID, emulator: true, env: {} })
+  );
+  assert.throws(() =>
+    createIngestStore({
+      projectId: STAGING_PROJECT_ID,
+      emulator: false,
+      env: { FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080" },
+    })
+  );
+});
+
+test("createIngestStore accepts the staging project's primary database", async () => {
+  const store = createIngestStore({
+    projectId: STAGING_PROJECT_ID,
+    databaseId: "(default)",
+    emulator: true,
+    env: { FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080" },
+    allowedProjects: [STAGING_PROJECT_ID],
+    quiet: true,
+  });
+  try {
+    assert.equal(store.projectId, STAGING_PROJECT_ID);
+    assert.equal(store.databaseId, "(default)");
+    assert.equal(store.mode, "emulator");
+  } finally {
+    await store.close();
+  }
+});
+
+test("createIngestStore refuses every database but the staging (default)", () => {
+  const base = {
+    projectId: STAGING_PROJECT_ID,
+    emulator: true,
+    env: { FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080" },
+  };
+  // The database is checked BEFORE any app or credential is created, so these
+  // all throw a configuration error rather than connecting anywhere.
+  for (const databaseId of ["staging", "default", "prod", "alerts", "", "   ", null]) {
+    assert.throws(
+      () => createIngestStore({ ...base, databaseId }),
+      /database/i,
+      `expected database ${JSON.stringify(databaseId)} to be refused`,
+    );
+  }
+});
+
+test("createIngestStore refuses production even if the allowlist is tampered with", () => {
+  assert.throws(
+    () =>
+      createIngestStore({
+        projectId: PRODUCTION_PROJECT_ID,
+        emulator: true,
+        env: { FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080" },
+        allowedProjects: [PRODUCTION_PROJECT_ID],
+      }),
+    /production/i,
+  );
 });

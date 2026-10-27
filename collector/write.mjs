@@ -142,6 +142,7 @@ export function planRun({
   collectorVersion = "unknown",
   dryRun = true,
   projectId = "",
+  databaseId = "",
   maxItems = 0,
   limits = DEFAULT_LIMITS,
   now = () => new Date(),
@@ -250,7 +251,7 @@ export function planRun({
       dryRun: Boolean(dryRun),
       counts: { ...emptyCounts(), sources: counts.sources, operations, batches },
       runDocument: buildRunDocument({
-        runId, status: RUN_STATUS.FAILED, startedAt: at, trigger, actor, commitSha, collectorVersion, dryRun, projectId, mode: dryRun ? "dry-run" : "write", sources: sourceSummaries, counts: { ...counts, operations, batches }, warnings, error: { message: reason, code: "OPERATION_CAP_EXCEEDED" },
+        runId, status: RUN_STATUS.FAILED, startedAt: at, trigger, actor, commitSha, collectorVersion, dryRun, projectId, databaseId, mode: dryRun ? "dry-run" : "write", sources: sourceSummaries, counts: { ...counts, operations, batches }, warnings, error: { message: reason, code: "OPERATION_CAP_EXCEEDED" },
       }),
       healthDocuments, itemDocuments, mutations, refusedSources, warnings, outcomes, sourceSummaries,
       itemPlanStats: counts,
@@ -259,7 +260,7 @@ export function planRun({
 
   const runStatus = computeRunStatus(outcomes);
   const runDocument = buildRunDocument({
-    runId, status: runStatus, startedAt: at, trigger, actor, commitSha, collectorVersion, dryRun, projectId, mode: dryRun ? "dry-run" : "write", sources: sourceSummaries, counts: { ...counts, operations, batches }, warnings, error: null,
+    runId, status: runStatus, startedAt: at, trigger, actor, commitSha, collectorVersion, dryRun, projectId, databaseId, mode: dryRun ? "dry-run" : "write", sources: sourceSummaries, counts: { ...counts, operations, batches }, warnings, error: null,
   });
 
   return {
