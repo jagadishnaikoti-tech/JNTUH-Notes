@@ -29,7 +29,15 @@ npm run build     # -> ./dist
 - one static HTML document per canonical route, both as `dist/<route>/index.html`
   and `dist/<route>.html` (see section 2)
 
-There is no server code and no environment variables.
+There is no application server. Firebase client configuration is supplied as
+Vite build-time environment variables: set `VITE_FIREBASE_*` in the local
+environment before `npm run build`, or in the hosting provider's build
+environment before its build runs. Vite embeds these values in the browser
+bundle, so changing a value requires a new build and deployment; they are not
+runtime server variables. Firebase web-config values are public, not secrets.
+Never place service-account credentials or private keys in `VITE_*` variables.
+Access control belongs in Firebase Auth and Firestore rules. See `.env.example`
+and [`docs/ADMIN_SETUP.md`](docs/ADMIN_SETUP.md).
 
 ### SPA routing
 
@@ -70,6 +78,12 @@ that have no real file (for example `/alerts/:id`, `/admin/ingest`, or an
 unknown URL), which then render the client app — including its client-side 404 —
 instead of Vercel's plain-text 404.
 
+The public alert feed is `/alerts`; it has a generated route document. Alert
+details use `/alerts/:id` and are resolved by the client at request time, so
+individual alert IDs do not get separate static documents or sitemap entries.
+Both public views read published alerts only; drafts and missing IDs are not
+available through the public detail route.
+
 > **Status:** the corrected `/index` destination is in the repository but is
 > **not yet verified in production.** Confirm it on a Vercel **preview**
 > deployment before promoting to production.
@@ -86,7 +100,8 @@ so it can never drift from the site.
 
 | Item | What is generated |
 | --- | --- |
-| Per-route HTML | `dist/<route>/index.html` + `dist/<route>.html` for all 68 public routes (home, years, subjects, question sets, coding resources, site map, legal pages, search) |
+| Core route HTML | `dist/<route>/index.html` + `dist/<route>.html` for 68 generated route descriptors (home, years, subjects, question sets, coding resources, alerts, site map, legal pages, search); `/search` is noindex and omitted from the sitemap |
+| Student auth documents | Four noindex route documents for `/signin`, `/signup`, `/forgot-password` and `/account`; none appear in the sitemap |
 | Admin documents | `dist/admin/**/index.html` + `dist/admin/*.html` for the 6 private admin routes, each with a `noindex, nofollow` head and no sitemap entry — present only so `/admin/*` deep links resolve on the static host |
 | Canonical URLs | Absolute, HTTPS, no trailing slash, one URL per page (`https://jntuh-notes.vercel.app/<route>`) |
 | Structured data | `WebSite` on the home page; `BreadcrumbList` on every other page — matching the visible breadcrumbs |
@@ -208,7 +223,7 @@ For Google Search Console:
 | --- | --- |
 | Production build (`npm run build`, incl. sitemap + prerendered head) | ✅ passing |
 | SPA deep-link refresh | ✅ confirmed locally via `vite preview` |
-| Per-route title/description/canonical/robots (68 documents) | ✅ 68 unique, validated |
+| Per-route title/description/canonical/robots (68 core route documents) | ✅ 68 unique, validated |
 | `sitemap.xml` (67 URLs, well-formed, canonical, from real data) | ✅ validated |
 | `robots.txt` (allow-all + sitemap reference) | ✅ in place |
 | Structured data (`WebSite` + `BreadcrumbList`) | ✅ validates (JSON-LD parse-checked on all routes) |

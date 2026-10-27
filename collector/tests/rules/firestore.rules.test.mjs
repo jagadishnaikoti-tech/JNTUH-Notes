@@ -28,7 +28,14 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc, deleteDoc } from "firebase/firestore";
+import {
+  deleteDoc,
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const RULES = readFileSync(path.join(ROOT, "firestore.rules"), "utf8");
@@ -69,7 +76,10 @@ function nonAdmin() {
 
 /** A signed-in administrator (custom claim `admin == true`). */
 function admin() {
-  return testEnv.authenticatedContext("admin-1", { admin: true }).firestore();
+  return testEnv.authenticatedContext("admin-1", {
+    admin: true,
+    email: "admin@jntuh.example",
+  }).firestore();
 }
 
 /** Seed a document bypassing the rules (this is what the collector does). */
@@ -165,7 +175,7 @@ const PUBLISHED_ALERT = {
 
 const DRAFT_ALERT = { ...PUBLISHED_ALERT, status: "draft", verifiedAt: null, verifiedBy: "" };
 
-describe("existing alert rules are preserved", () => {
+describe("alert publication follows the verification workflow", () => {
   it("published alerts remain publicly readable", async () => {
     await seed(["alerts", "pub-1"], PUBLISHED_ALERT);
     await assertSucceeds(getDoc(doc(anon(), "alerts", "pub-1")));
@@ -177,14 +187,117 @@ describe("existing alert rules are preserved", () => {
     await assertFails(getDoc(doc(nonAdmin(), "alerts", "draft-1")));
   });
 
-  it("publishing without verification metadata is denied", async () => {
-    // Drop the verification fields entirely; a published alert must carry them.
-    const { verifiedAt, verifiedBy, ...unverified } = PUBLISHED_ALERT;
-    await assertFails(setDoc(doc(admin(), "alerts", "u-1"), unverified));
+  it("denies creating a published alert with fabricated verification metadata", async () => {
+    await assertFails(setDoc(doc(admin(), "alerts", "published-create"), PUBLISHED_ALERT));
   });
 
-  it("a verified publish by an admin still succeeds", async () => {
-    await assertSucceeds(setDoc(doc(admin(), "alerts", "ok-1"), PUBLISHED_ALERT));
+  it("denies fabricated verification metadata on a new draft", async () => {
+    await assertFails(setDoc(doc(admin(), "alerts", "forged-create"), {
+      ...DRAFT_ALERT,
+      verifiedAt: new Date("2026-10-01T00:00:00Z"),
+      verifiedBy: "admin@jntuh.example",
+    }));
+  });
+
+  it("denies an arbitrary timestamp when an admin verifies a draft", async () => {
+    await assertSucceeds(setDoc(doc(admin(), "alerts", "forged-update"), DRAFT_ALERT));
+    await assertFails(updateDoc(doc(admin(), "alerts", "forged-update"), {
+      verifiedAt: new Date("2026-10-01T00:00:00Z"),
+      verifiedBy: "admin@jntuh.example",
+    }));
+  });
+
+  it("denies verification metadata attributed to a different actor", async () => {
+    await assertSucceeds(setDoc(doc(admin(), "alerts", "wrong-actor"), DRAFT_ALERT));
+    await assertFails(updateDoc(doc(admin(), "alerts", "wrong-actor"), {
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "someone-else@jntuh.example",
+    }));
+  });
+
+  it("denies verifying and publishing in one update", async () => {
+    await assertSucceeds(setDoc(doc(admin(), "alerts", "combined-transition"), DRAFT_ALERT));
+    await assertFails(updateDoc(doc(admin(), "alerts", "combined-transition"), {
+      status: "published",
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "admin@jntuh.example",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  it("denies combining verification or publication with content edits", async () => {
+    const ref = doc(admin(), "alerts", "mixed-transition");
+    await assertSucceeds(setDoc(ref, DRAFT_ALERT));
+    await assertFails(updateDoc(ref, {
+      title: "Changed while verifying",
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "admin@jntuh.example",
+    }));
+
+    await assertSucceeds(updateDoc(ref, {
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "admin@jntuh.example",
+    }));
+    await assertFails(updateDoc(ref, {
+      title: "Changed while publishing",
+      status: "published",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  it("denies publishing an unverified draft", async () => {
+    await assertSucceeds(setDoc(doc(admin(), "alerts", "unverified-publish"), DRAFT_ALERT));
+    await assertFails(updateDoc(doc(admin(), "alerts", "unverified-publish"), {
+      status: "published",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  it("denies changing verification metadata as the draft is published", async () => {
+    const ref = doc(admin(), "alerts", "altered-publish");
+    await assertSucceeds(setDoc(ref, DRAFT_ALERT));
+    await assertSucceeds(updateDoc(ref, {
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "admin@jntuh.example",
+    }));
+    await assertFails(updateDoc(ref, {
+      status: "published",
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "someone-else@jntuh.example",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+  });
+
+  it("allows an admin to verify a draft, then publish without altering verification", async () => {
+    const ref = doc(admin(), "alerts", "verify-then-publish");
+    await assertSucceeds(setDoc(ref, DRAFT_ALERT));
+
+    await assertSucceeds(updateDoc(ref, {
+      verifiedAt: serverTimestamp(),
+      verifiedBy: "admin@jntuh.example",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+    const verified = await getDoc(ref);
+    const verifiedAt = verified.data().verifiedAt;
+    assert.ok(verifiedAt, "verification timestamp was recorded");
+    assert.equal(verified.data().verifiedBy, "admin@jntuh.example");
+    assert.equal(verified.data().status, "draft");
+
+    await assertSucceeds(updateDoc(ref, {
+      status: "published",
+      updatedBy: "admin@jntuh.example",
+      updatedAt: serverTimestamp(),
+    }));
+    const published = await getDoc(ref);
+    assert.equal(published.data().status, "published");
+    assert.ok(published.data().verifiedAt.isEqual(verifiedAt));
+    assert.equal(published.data().verifiedBy, "admin@jntuh.example");
+    await assertSucceeds(getDoc(doc(anon(), "alerts", "verify-then-publish")));
   });
 });
 

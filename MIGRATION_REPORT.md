@@ -34,9 +34,11 @@ shared across sections.
 
 | Item | Count |
 | --- | ---: |
-| Top-level resource folders | **59** |
+| Unique top-level Drive folders | **59** |
+| Top-level catalog entries | **60** |
 | Nested sub-folders | **121** |
-| Individual documents | **821** |
+| Indexed document entries | **821** |
+| Unique Drive file IDs | **803** |
 | — of which PDFs | **621** |
 | Total reported size | **~5.59 GB** |
 | External links | 11 |
@@ -45,6 +47,12 @@ Every subject folder on the site was enumerated by crawling Google Drive's
 public `embeddedfolderview` endpoint (no API key required). The complete,
 machine-readable mapping is in **`RESOURCE_INVENTORY.csv`** (942 rows: 821 files
 + 121 folders) and **`src/data/resources.json`**.
+
+The generated app catalog has 60 top-level entries but 59 unique Drive folder
+IDs because the same BEFA folder is listed under two year groups. The 821
+indexed document entries include 18 cross-folder reuses, so they represent 803
+unique file IDs. The CSV's 942 data rows count the indexed file and nested-folder
+entries, not the top-level catalog entries.
 
 ---
 
@@ -56,23 +64,25 @@ machine-readable mapping is in **`RESOURCE_INVENTORY.csv`** (942 rows: 821 files
 - **All original links & destinations** — the 11 external links (WhatsApp share,
   feedback, update pdfs, results, GUARNTEE QNS, CSE Pdfs bot, R18, R22 syllabus,
   roadmap.sh, CodSoft, CodeChef) are byte-for-byte the original URLs.
-- **All documents** — every one of the 821 files inside the 59 Drive folders is
-  reachable in the app via its own original Drive `view`/`download` URL, and the
-  original folder URL is shown on each subject page.
+- **All documents** — all 821 indexed file entries across the 60 catalog entries
+  (59 unique Drive folders) are reachable via their original Drive
+  `view`/`download` URLs, and the original folder URL is shown on each subject
+  page.
 - **All visible text** — headings, taglines, the "Note: For More pdf's…" line,
   course meta (B.Tech / CSE & AIML / R22 / JNTUH), button labels, the copyright
   modal body, and the footer.
 - **All interactive features** — the copyright modal, the "Get Started" flow, the
   year/subject drill-down, and the Learn Code hub.
-- **Original visual identity** — background gradient, radially-lit panel,
-  Times New Roman headings (red/dark-green/dark-blue), brown pill buttons,
-  `#171765` outlined buttons, button hover scale/glow.
+- **Original wording and branding** — the source text and labels were retained;
+  the original visual treatment was redesigned rather than reproduced. The
+  current Claymorphism styling is documented in section 6.
 
 ### Intentional, additive improvements (no content changed)
 
 - Sections became **real routes** so refresh / back / forward / deep-linking work.
 - The navbar **search box is now functional** (it searched nothing on the
-  original) and searches all 59 subjects + 821 documents.
+  original) and searches all 60 top-level catalog entries + 821 indexed document
+  entries.
 - **Per-file listings + in-app preview** on subject pages (the original only gave
   a folder link). The original folder link is still shown and clickable.
 - Responsive behaviour, keyboard access, `Esc`-to-close, empty/error/404 states.
@@ -145,29 +155,22 @@ of the source links, documented rather than hidden.
 
 ---
 
-## 6. Frontend redesign (UI/UX Pro Max)
+## 6. Frontend design (current implementation)
 
-The entire frontend was upgraded into a premium academic platform using the
-**UI/UX Pro Max** skill.
-
-- **Installed** via `npx ui-ux-pro-max-cli init --ai opencode` →
-  `.opencode/skills/ui-ux-pro-max` (OpenCode exposes it as the
-  `ui-ux-pro-max` skill). Python 3.14 was already available for its search script.
-- **Consulted** its `--design-system` engine for an education / document library
-  and persisted the result to `design-system/lecture-notes/MASTER.md`, then ran
-  supporting `--domain ux`, `--domain icons`, `--domain typography` and
-  `--stack react` searches.
-
-Applied recommendations:
+The shipped interface uses the Claymorphism design tokens in
+`src/styles/tokens.css`. Earlier migration notes describing Swiss Modernism,
+book-brown colors and serif fonts are historical and do not describe the
+current styling.
 
 | Area | Applied |
 | --- | --- |
-| Style | **Swiss Modernism 2.0** — rational grid, mathematical spacing, clear hierarchy |
-| Palette | *"Book brown + page amber"*: `#78716C` / `#92400E` / `#D97706` on `#FFFBEB` |
-| Type | Cormorant Garamond + Crimson Pro (+ Cinzel wordmark, Atkinson Hyperlegible UI) |
-| Spacing / radii / shadows / motion | Token scales in `src/styles/tokens.css` |
-| Icons | **Lucide** SVG set (skill anti-pattern: no emoji-as-icons) |
-| A11y | Contrast ≥ 4.5:1 verified, visible focus, `prefers-reduced-motion`, ARIA |
+| Style | **Claymorphism** — ink borders, raised cards, offset shadows and press feedback |
+| Palette | Coral `#FDBCB4`, sky `#ADD8E6`, green CTA `#22C55E`, ink `#2D3748`, white canvas and warm surfaces; dark-theme overrides are tokenized |
+| Type | Fredoka headings + DM Sans body and interface |
+| Sidebar widths | 276 px expanded / 78 px collapsed |
+| Spacing / radii / shadows / motion | Shared token scales in `src/styles/tokens.css` |
+| Icons | Lucide SVG icons |
+| Accessibility | Visible focus, reduced-motion support, semantic controls and ARIA labels |
 
 Structural changes:
 
@@ -188,8 +191,8 @@ Structural changes:
   original `COPYRIGHTS ©` dialog (VARUN & HARISH / Nagaraju & Abhilash / college)
   is preserved verbatim.
 
-Validation performed in a real browser (DOM/computed-style checks — no visible
-desktop for screenshots in this environment):
+The following browser checks were recorded during the migration; pixel
+measurements from that pass are historical, not current style specifications:
 
 - Desktop (≥1024 px): sidebar fixed at 272 px, content offset 272 px, mobile
   chrome hidden; icon-only collapse → 76 px with working tooltips.
@@ -199,7 +202,8 @@ desktop for screenshots in this environment):
   flags); **0 horizontal overflow** at every breakpoint tested.
 - Credits modal opens, focuses its close button, and closes on `Esc`; document
   preview loads the correct `drive.google.com/file/d/<id>/preview` iframe.
-- All key text/background contrast pairs measured between **5.49:1 and 17.2:1**.
+- Contrast and responsive checks were performed against the design in use at
+  that time; these figures are not a current re-certification.
 
 `npm run build` succeeds; the bundle is split into `index` / `vendor` /
 `resources` chunks (each < 500 kB) for caching.

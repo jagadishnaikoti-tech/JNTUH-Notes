@@ -63,29 +63,49 @@ service cloud.firestore {
       return ['reviewState', 'promotedAlertId', 'promotedAt', 'promotedBy'];
     }
 
-    // Promotion metadata is all-or-nothing. A `promoted` item must carry a
-    // well-formed alert id, timestamp and actor. Any other state may *keep* a
-    // previous promotion's metadata as history, but every present field must
-    // still be correctly typed (no dumping a map or a number in `promotedAt`).
-    function validPromotion(d) {
-      return d.reviewState == 'promoted'
-        ? (d.keys().hasAll(['promotedAlertId', 'promotedAt', 'promotedBy'])
-            && isString(d.promotedAlertId, 200) && d.promotedAlertId.size() >= 1
-            && d.promotedAt is timestamp
-            && isString(d.promotedBy, 200) && d.promotedBy.size() >= 1)
-        : ((!d.keys().hasAny(['promotedAlertId']) || d.promotedAlertId == null
-              || (isString(d.promotedAlertId, 200) && d.promotedAlertId.size() >= 1))
-            && (!d.keys().hasAny(['promotedAt']) || d.promotedAt == null
-              || d.promotedAt is timestamp)
-            && (!d.keys().hasAny(['promotedBy']) || d.promotedBy == null
-              || (isString(d.promotedBy, 200) && d.promotedBy.size() >= 1)));
+    function promotionMetadataFields() {
+      return ['promotedAlertId', 'promotedAt', 'promotedBy'];
     }
 
-    function validReviewUpdate(d, existing) {
-      return d.diff(existing).affectedKeys().hasOnly(reviewUpdateFields())
-        && d.keys().hasAll(['reviewState'])
+    function validPromotionMetadata(d) {
+      return d.keys().hasAll(promotionMetadataFields())
+        && isString(d.promotedAlertId, 200) && d.promotedAlertId.size() >= 1
+        && d.promotedAt is timestamp
+        && isString(d.promotedBy, 200) && d.promotedBy.size() >= 1;
+    }
+
+    function validReviewDocument(d) {
+      return d.keys().hasAll(['reviewState'])
         && d.reviewState in ['new', 'promoted', 'ignored']
-        && validPromotion(d);
+        && (d.reviewState == 'promoted'
+          ? validPromotionMetadata(d)
+          : !d.keys().hasAny(promotionMetadataFields()));
+    }
+
+    function onlyReviewStateChanged(d, existing) {
+      return d.diff(existing).affectedKeys().hasOnly(['reviewState'])
+        && d.diff(existing).affectedKeys().hasAll(['reviewState']);
+    }
+
+    // Allowed client transitions are new -> ignored, ignored -> new (only
+    // without promotion metadata), and new/ignored -> promoted. Promotion is
+    // terminal, and its metadata is written once as part of that transition.
+    function validReviewUpdate(d, existing) {
+      return validReviewDocument(existing)
+        && validReviewDocument(d)
+        && (
+          (
+            ((existing.reviewState == 'new' && d.reviewState == 'ignored')
+              || (existing.reviewState == 'ignored' && d.reviewState == 'new'))
+            && onlyReviewStateChanged(d, existing)
+          )
+          || (
+            (existing.reviewState == 'new' || existing.reviewState == 'ignored')
+            && d.reviewState == 'promoted'
+            && d.diff(existing).affectedKeys().hasOnly(reviewUpdateFields())
+            && d.diff(existing).affectedKeys().hasAll(reviewUpdateFields())
+          )
+        );
     }
 
     match /ingestItems/{itemId} {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Award,
@@ -34,10 +34,72 @@ export default function Sidebar() {
   const {
     collapsed,
     mobileOpen,
+    isDesktop,
     closeMobile,
     toggleCollapsed,
     expand,
   } = useSidebar();
+  const sidebarRef = useRef(null);
+  const closeRef = useRef(null);
+  const mobileDialogOpen = !isDesktop && mobileOpen;
+
+  useEffect(() => {
+    if (!mobileDialogOpen) return undefined;
+
+    const opener = document.activeElement;
+    const sidebar = sidebarRef.current;
+    closeRef.current?.focus();
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMobile();
+        return;
+      }
+      if (event.key !== "Tab" || !sidebar) return;
+
+      const focusable = Array.from(
+        sidebar.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => element.tabIndex >= 0 && element.getClientRects().length);
+      if (!focusable.length) {
+        event.preventDefault();
+        sidebar.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (
+        event.shiftKey &&
+        (document.activeElement === first ||
+          !sidebar.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        last.focus();
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last ||
+          !sidebar.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    const onFocusIn = (event) => {
+      if (sidebar && !sidebar.contains(event.target)) closeRef.current?.focus();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("focusin", onFocusIn);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("focusin", onFocusIn);
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
+  }, [mobileDialogOpen, closeMobile]);
 
   const subjectMatch = SUBJECT_PATH.exec(pathname);
   const activeFolderId = subjectMatch ? subjectMatch[2] : null;
@@ -97,9 +159,15 @@ export default function Sidebar() {
       ) : null}
 
       <aside
+        ref={sidebarRef}
         id="primary-sidebar"
         className={"sidebar" + (collapsed ? " is-collapsed" : "")}
         aria-label="Main navigation"
+        aria-hidden={!isDesktop && !mobileOpen ? true : undefined}
+        aria-modal={mobileDialogOpen ? true : undefined}
+        role={mobileDialogOpen ? "dialog" : undefined}
+        tabIndex={mobileDialogOpen ? -1 : undefined}
+        inert={!isDesktop && !mobileOpen ? "" : undefined}
       >
         <div className="sidebar-brand">
           <Link className="sidebar-brand-inner" to="/" title={`${SITE.heading} · Home`}>
@@ -116,6 +184,7 @@ export default function Sidebar() {
             className="sidebar-close"
             aria-label="Close navigation"
             onClick={closeMobile}
+            ref={closeRef}
           >
             <X size={18} aria-hidden="true" />
           </button>

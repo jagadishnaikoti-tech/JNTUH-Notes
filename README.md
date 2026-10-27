@@ -24,8 +24,9 @@ invented.
   `src/styles/tokens.css` (tokens) + `src/styles/global.css` (components)
 - **Google Fonts**: Fredoka (headings), DM Sans (body & UI)
 
-No backend is required. All documents live on public Google Drive folders and are
-linked with their original URLs.
+No custom backend is required for resource browsing. Optional account, alerts
+and admin features use Firebase. All study documents live on public Google Drive
+folders and are linked with their original URLs.
 
 ---
 
@@ -42,6 +43,18 @@ Production build & preview:
 npm run build    # outputs to ./dist
 npm run preview  # serve the production build locally
 ```
+
+### Firebase client configuration
+
+The browser app reads `VITE_FIREBASE_*` values from Vite's environment at
+**build time**. Set them in `.env.local` for local development or in the hosting
+provider's build environment (for example, Vercel project environment
+variables) before building. Changing them requires a new build and deployment;
+they are not runtime server settings. These Firebase web-config values are
+public and are embedded in the browser bundle, so never put private keys or
+service-account credentials in `VITE_*` variables. Firebase Auth and Firestore
+rules—not the web config—control access. See `.env.example` and
+[`docs/ADMIN_SETUP.md`](docs/ADMIN_SETUP.md) for setup details.
 
 > **Deployment note:** the app uses `BrowserRouter`. When hosting `dist/` on a
 > static server, configure an SPA fallback so unknown paths serve `index.html`
@@ -69,9 +82,14 @@ npm run preview  # serve the production build locally
 | `/signup` | Student sign-up |
 | `/forgot-password` | Request a password reset email |
 | `/account` | Student account (private, sign-in required) |
+| `/alerts` | Public alert radar (published alerts only) |
+| `/alerts/:id` | Public detail for a published alert |
 | `/admin/login` | Admin sign-in (private) |
 | `/admin/dashboard`, `/admin/analytics`, `/admin/pdf-activity`, `/admin/channels` | Admin panel (private, login + `admin` claim required) |
 | `*` | Not found (404) |
+
+The alert pages require no visitor sign-in; unpublished or missing alert IDs are
+not returned by the public detail view.
 
 ---
 
@@ -340,9 +358,11 @@ The reference site links to **public Google Drive folders**, never to individual
 files. To guarantee no content is lost, `tools/crawl-drive.mjs` enumerated every
 folder and every file inside it (see `RESOURCE_INVENTORY.md` / `.csv`).
 
-- **Top-level resources:** 59 subject / category folders (identical URLs)
+- **Top-level catalog entries:** 60 resource entries pointing to 59 unique Drive
+  folders (the BEFA folder is reused in two year groups)
 - **Nested sub-folders:** 121
-- **Individual documents:** 821 (621 PDFs + docx/pptx/txt/images/videos), ~5.59 GB
+- **Indexed document entries:** 821 (621 PDFs + docx/pptx/txt/images/videos),
+  representing 803 unique Drive file IDs (~5.59 GB reported size)
 
 Each document is exposed with its own **original Drive URL**:
 

@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 import { after, before, beforeEach, describe, it } from "node:test";
 
 import { assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { deleteDoc, deleteField, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 
 import {
   DEFAULT_DATABASE,
@@ -85,6 +85,13 @@ const ITEM_DOC = {
   lastRunId: "run-1",
   seenCount: 1,
   reviewState: "new",
+};
+const PROMOTED_ITEM_DOC = {
+  ...ITEM_DOC,
+  reviewState: "promoted",
+  promotedAlertId: "alert-9",
+  promotedAt: new Date("2026-10-17T00:00:00Z"),
+  promotedBy: "admin@jntuh.example",
 };
 
 const RUN_PATH = ["ingestRuns", "run-1"];
@@ -148,6 +155,11 @@ describe("ingestItems: review-state updates", () => {
     await assertSucceeds(updateDoc(doc(env.admin, ...ITEM_PATH), { reviewState: "ignored" }));
   });
 
+  it("admins can return an unpromoted ignored item to review", async () => {
+    await env.seed(ITEM_PATH, { ...ITEM_DOC, reviewState: "ignored" });
+    await assertSucceeds(updateDoc(doc(env.admin, ...ITEM_PATH), { reviewState: "new" }));
+  });
+
   it("admins can promote an item with complete metadata", async () => {
     await env.seed(ITEM_PATH, ITEM_DOC);
     await assertSucceeds(
@@ -158,6 +170,57 @@ describe("ingestItems: review-state updates", () => {
         promotedBy: "admin@jntuh.example",
       }),
     );
+  });
+
+  it("admins can promote an ignored item with complete metadata", async () => {
+    await env.seed(ITEM_PATH, { ...ITEM_DOC, reviewState: "ignored" });
+    await assertSucceeds(
+      updateDoc(doc(env.admin, ...ITEM_PATH), {
+        reviewState: "promoted",
+        promotedAlertId: "alert-9",
+        promotedAt: new Date(),
+        promotedBy: "admin@jntuh.example",
+      }),
+    );
+  });
+
+  it("a promoted item cannot return to review or become ignored", async () => {
+    await env.seed(ITEM_PATH, PROMOTED_ITEM_DOC);
+    await assertFails(updateDoc(doc(env.admin, ...ITEM_PATH), { reviewState: "new" }));
+    await assertFails(updateDoc(doc(env.admin, ...ITEM_PATH), { reviewState: "ignored" }));
+  });
+
+  it("promotion metadata cannot be cleared or rewritten", async () => {
+    await env.seed(ITEM_PATH, PROMOTED_ITEM_DOC);
+    for (const field of ["promotedAlertId", "promotedAt", "promotedBy"]) {
+      await assertFails(updateDoc(doc(env.admin, ...ITEM_PATH), { [field]: deleteField() }));
+    }
+    await assertFails(
+      updateDoc(doc(env.admin, ...ITEM_PATH), { promotedBy: "other-admin@jntuh.example" }),
+    );
+  });
+
+  it("promotion metadata cannot be added outside a promotion transition", async () => {
+    await env.seed(ITEM_PATH, ITEM_DOC);
+    await assertFails(
+      updateDoc(doc(env.admin, ...ITEM_PATH), {
+        reviewState: "ignored",
+        promotedAlertId: "alert-9",
+        promotedAt: new Date(),
+        promotedBy: "admin@jntuh.example",
+      }),
+    );
+  });
+
+  it("a return to review cannot clear or carry promotion metadata", async () => {
+    await env.seed(ITEM_PATH, {
+      ...ITEM_DOC,
+      reviewState: "ignored",
+      promotedAlertId: "alert-9",
+      promotedAt: new Date(),
+      promotedBy: "admin@jntuh.example",
+    });
+    await assertFails(updateDoc(doc(env.admin, ...ITEM_PATH), { reviewState: "new" }));
   });
 
   it("promoting without metadata is rejected", async () => {

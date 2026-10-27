@@ -11,7 +11,10 @@ import {
   X,
 } from "lucide-react";
 import Footer from "../components/Footer.jsx";
-import { fetchPublishedAlerts } from "../lib/alerts.js";
+import {
+  getPublishedAlertsViewState,
+  readPublishedAlerts,
+} from "../lib/alerts.js";
 import { filterAlerts, hasActiveAlertFilters } from "../lib/alertFilters.js";
 import {
   ALERT_CATEGORIES,
@@ -111,13 +114,20 @@ export default function AlertRadar() {
   const [category, setCategory] = useState("all");
   const [pinnedOnly, setPinnedOnly] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (isActive = () => true) => {
     setStatus("loading");
+    setAlerts([]);
     try {
-      const list = await fetchPublishedAlerts();
-      setAlerts(Array.isArray(list) ? list : []);
+      const result = await readPublishedAlerts();
+      if (!isActive()) return;
+      if (result.error) {
+        setStatus("error");
+        return;
+      }
+      setAlerts(Array.isArray(result.alerts) ? result.alerts : []);
       setStatus("ready");
     } catch {
+      if (!isActive()) return;
       setAlerts([]);
       setStatus("error");
     }
@@ -125,26 +135,20 @@ export default function AlertRadar() {
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      try {
-        const list = await fetchPublishedAlerts();
-        if (!active) return;
-        setAlerts(Array.isArray(list) ? list : []);
-        setStatus("ready");
-      } catch {
-        if (!active) return;
-        setAlerts([]);
-        setStatus("error");
-      }
-    })();
+    load(() => active);
     return () => {
       active = false;
     };
-  }, []);
+  }, [load]);
 
   const filters = { query, category, pinnedOnly };
   const filtered = useMemo(() => filterAlerts(alerts, filters), [alerts, query, category, pinnedOnly]);
   const filtersActive = hasActiveAlertFilters(filters);
+  const viewState = getPublishedAlertsViewState({
+    loading: status === "loading",
+    error: status === "error",
+    alerts,
+  });
 
   const clearFilters = useCallback(() => {
     setQuery("");
@@ -152,7 +156,7 @@ export default function AlertRadar() {
     setPinnedOnly(false);
   }, []);
 
-  const showFilters = status === "ready" && alerts.length > 0;
+  const showFilters = viewState === "ready";
 
   return (
     <main className="page-main">
@@ -286,7 +290,7 @@ export default function AlertRadar() {
           </div>
         ) : null}
 
-        {status === "loading" ? (
+        {viewState === "loading" ? (
           <div className="empty-state" role="status" aria-live="polite">
             <span className="empty-state-icon" aria-hidden="true">
               <RefreshCw size={26} />
@@ -295,7 +299,7 @@ export default function AlertRadar() {
               Loading alerts…
             </p>
           </div>
-        ) : status === "error" ? (
+        ) : viewState === "error" ? (
           <div className="error-state" role="alert">
             <p style={{ marginTop: 0 }}>
               We couldn’t load alerts right now. Please try again.
@@ -309,7 +313,7 @@ export default function AlertRadar() {
               Try again
             </button>
           </div>
-        ) : alerts.length === 0 ? (
+        ) : viewState === "empty" ? (
           <div className="empty-state">
             <span className="empty-state-icon" aria-hidden="true">
               <SearchX size={26} />

@@ -9,15 +9,65 @@ import { Download, ExternalLink, X } from "lucide-react";
  */
 export default function PdfViewer({ file, onClose }) {
   const closeRef = useRef(null);
+  const dialogRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
+    if (!file) return undefined;
+
+    const opener = document.activeElement;
+    const dialog = dialogRef.current;
     closeRef.current?.focus();
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+
+      const focusable = Array.from(
+        dialog.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => element.tabIndex >= 0 && element.getClientRects().length);
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (
+        event.shiftKey &&
+        (document.activeElement === first ||
+          !dialog.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        last.focus();
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last ||
+          !dialog.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    const onFocusIn = (event) => {
+      if (dialog && !dialog.contains(event.target)) closeRef.current?.focus();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("focusin", onFocusIn);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("focusin", onFocusIn);
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
+  }, [file]);
 
   if (!file) return null;
   const embedUrl = `https://drive.google.com/file/d/${file.fileId}/preview`;
@@ -33,10 +83,12 @@ export default function PdfViewer({ file, onClose }) {
       }}
     >
       <div
+        ref={dialogRef}
         className="viewer"
         role="dialog"
         aria-modal="true"
         aria-label={`Preview of ${file.title}`}
+        tabIndex={-1}
       >
         <div className="viewer-head">
           <span className="viewer-title" title={file.title}>

@@ -215,8 +215,8 @@ async function publicReadContext(deps) {
 
 /**
  * The single public read behind every alert list. Returns `{ alerts, error }`
- * so a caller can tell an empty feed apart from a failed read - a distinction
- * the homepage section needs to show a real error state.
+ * so callers can tell an empty feed apart from a failed read - a distinction
+ * public alert views need to show a real error state.
  *
  * The query filters `status == "published"`, which firestore.rules require for
  * an anonymous read, so a draft can never be returned here even if the rules
@@ -243,7 +243,22 @@ export async function readPublishedAlerts(deps) {
   }
 }
 
-/** Public: published alerts only, safe to render for visitors. */
+/** Resolve the public feed view state from its load state and read result. */
+export function getPublishedAlertsViewState({
+  loading = false,
+  error = false,
+  alerts = [],
+} = {}) {
+  if (loading) return "loading";
+  if (error) return "error";
+  return alerts.length > 0 ? "ready" : "empty";
+}
+
+/**
+ * Public: published alerts only, safe to render for visitors. Retains the
+ * original array return type; callers that need read-failure details should
+ * use `readPublishedAlerts`.
+ */
 export async function fetchPublishedAlerts(deps) {
   const { alerts } = await readPublishedAlerts(deps);
   return alerts;

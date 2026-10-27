@@ -136,8 +136,8 @@ service cloud.firestore {
         && (!d.keys().hasAny(['verifiedBy']) || isString(d.verifiedBy, 200))
         // Hardening: a PUBLISHED alert must carry verification metadata -
         // verifiedAt is a real timestamp and verifiedBy a non-empty actor.
-        // verifyAlert() is the only writer of these fields; publishing never
-        // stamps them (src/lib/alerts.js publishAlert refuses instead).
+        // The update rules below permit them to be set only by a separate
+        // draft verification transition; publishing never stamps them.
         && (d.status != 'published'
               || (d.keys().hasAll(['verifiedAt', 'verifiedBy'])
                     && d.verifiedAt is timestamp
@@ -146,9 +146,57 @@ service cloud.firestore {
         && (!d.keys().hasAny(['tags']) || d.tags is list);
     }
 
+    function hasNoVerification(d) {
+      return d.get('verifiedAt', null) == null
+        && d.get('verifiedBy', '') == '';
+    }
+
+    function verificationMetadataUnchanged(existing, next) {
+      return next.get('verifiedAt', null) == existing.get('verifiedAt', null)
+        && next.get('verifiedBy', '') == existing.get('verifiedBy', '');
+    }
+
+    function validVerificationTransition(existing, next) {
+      return verificationMetadataUnchanged(existing, next)
+        || (existing.status == 'draft'
+          && next.status == 'draft'
+          && hasNoVerification(existing)
+          && next.diff(existing).affectedKeys().hasOnly([
+            'verifiedAt', 'verifiedBy', 'updatedBy', 'updatedAt'
+          ])
+          && next.verifiedAt == request.time
+          && next.verifiedBy == request.auth.token.get('email', request.auth.uid)
+          && isString(next.verifiedBy, 200)
+          && next.verifiedBy.size() >= 1);
+    }
+
+    function validAlertCreate(d) {
+      // New alerts must enter through the draft -> verified -> published
+      // workflow. Creation can never supply verification metadata.
+      return validAlert(d) && d.status == 'draft' && hasNoVerification(d);
+    }
+
+    function validAlertUpdate(existing, next) {
+      return validAlert(next)
+        && validVerificationTransition(existing, next)
+        // Publishing is a separate update after verification. The timestamp
+        // and actor must already be present and must not change as it publishes.
+        && (next.status != 'published'
+          || existing.status == 'published'
+          || (existing.status == 'draft'
+            && existing.verifiedAt is timestamp
+            && isString(existing.verifiedBy, 200)
+            && existing.verifiedBy.size() >= 1
+            && next.diff(existing).affectedKeys().hasOnly([
+              'status', 'updatedBy', 'updatedAt'
+            ])));
+    }
+
     match /alerts/{alertId} {
       allow read: if isAdmin() || resource.data.status == 'published';
-      allow create, update: if isAdmin() && validAlert(request.resource.data);
+      allow create: if isAdmin() && validAlertCreate(request.resource.data);
+      allow update: if isAdmin()
+        && validAlertUpdate(resource.data, request.resource.data);
       allow delete: if false;
     }
 
