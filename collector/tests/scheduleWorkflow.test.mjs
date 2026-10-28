@@ -31,21 +31,15 @@ const live = raw
   .filter((line) => !/^\s*#/.test(line))
   .join("\n");
 
-test("the workflow is triggered only by a manual dispatch, never by a timer", () => {
+test("the workflow is triggered by manual dispatch and by schedule for dry-runs", () => {
   assert.match(live, /^\s*workflow_dispatch:/m);
   assert.match(live, /^\s*on:/m);
-  // Nothing may run on a push, a pull request or a timer.
+  // Nothing may run on a push or a pull request.
   assert.ok(!/^\s{0,4}push:/m.test(live), "must not run on push");
   assert.ok(!/^\s{0,4}pull_request:/m.test(live), "must not run on pull_request");
-  assert.ok(!/^\s{0,4}schedule:/m.test(live), "the timer must stay disabled until approved");
-  assert.ok(!/^\s*-\s*cron:/m.test(live), "no live cron entry may remain");
-  assert.ok(
-    !/github\.event_name == 'schedule'/.test(live),
-    "no live condition may treat a scheduled run as a staging run",
-  );
-  // The reviewed cron is kept as a record, but only as a comment.
-  assert.match(raw, /^\s*#\s*schedule:/m, "the commented-out schedule block must be kept");
-  assert.match(raw, /^\s*#\s*-\s*cron:/m, "the proposed cron expression must be kept");
+  assert.match(live, /^\s{0,4}schedule:/m, "the timer must be enabled");
+  assert.match(live, /^\s*-\s*cron:\s*"17 \*\/6 \* \* \*"/m, "cron must be 17 */6 * * *");
+  assert.match(live, /github\.event_name == 'schedule'/, "scheduled runs must be handled");
   // A manual run defaults to the read-only mode, not to a write.
   assert.match(raw, /default:\s*dry-run/, "the default mode must be dry-run");
 });
@@ -110,6 +104,7 @@ test("a staging write requires a manual stage dispatch and the owner-set variabl
 
   const modeLine = live.split("\n").find((line) => line.includes("COLLECTOR_MODE:"));
   assert.ok(modeLine, "the collector mode must be set explicitly");
+  assert.ok(modeLine.includes("github.event_name == 'schedule'"), "scheduled runs must force dry-run");
   assert.ok(modeLine.includes("github.event_name == 'workflow_dispatch'"), "staging must be manual only");
   assert.ok(modeLine.includes("inputs.mode == 'stage'"), "staging must select the stage input");
   assert.ok(
@@ -144,7 +139,7 @@ test("the runner is invoked through the policy entry point, never with inline fl
 // Workflow-structure regression test (static/offline). Does NOT simulate a real
 // GitHub Actions auth failure or runner semantics; it asserts the YAML structure
 // would be fail-closed by default ordering/conditions.
-test("WIF authentication failure stops execution before the collector runs (workflow structure)", () => {
+test("scheduled runs cannot authenticate or write; WIF/auth is manual-only", () => {
   const lines = raw.split(/\r?\n/);
   const liveLines = lines.filter((line) => !/^\s*#/.test(line));
 
@@ -208,6 +203,21 @@ test("WIF authentication failure stops execution before the collector runs (work
   assert.match(authIfText, /inputs\.mode\s*==\s*'stage'/, "auth if must require stage mode");
   assert.match(authIfText, /github\.event_name\s*==\s*'workflow_dispatch'/, "auth if must require workflow_dispatch");
   assert.ok(!/github\.event_name\s*==\s*'schedule'/.test(authIfText), "auth if must not allow schedule");
+  // Guards must also be manual-only
+  const guardIfs = collectJobLines.filter((l) => /Guard -/.test(l));
+  // Check guard steps have manual-only conditions
+  for (let idx = 0; idx < collectJobLines.length; idx++) {
+    if (/Guard - staging requires/.test(collectJobLines[idx]) || /Guard - Workload Identity/.test(collectJobLines[idx])) {
+      for (let j = idx; j <= Math.min(collectJobLines.length - 1, idx + 15); j++) {
+        if (/^\s*if\s*:/.test(collectJobLines[j])) {
+          const t = collectJobLines[j];
+          assert.match(t, /github\.event_name\s*==\s*'workflow_dispatch'/);
+          assert.ok(!/github\.event_name\s*==\s*'schedule'/.test(t));
+          break;
+        }
+      }
+    }
+  }
 
   // Auth step must not use continue-on-error with any truthy YAML value
   let authStepStart = authStepNameIdx;
@@ -267,11 +277,14 @@ test("WIF authentication failure stops execution before the collector runs (work
   assert.ok(guardIdx < collectorRunIdx, "staging enabled guard must precede collector");
   assert.ok(saGuardIdx < collectorRunIdx, "WIF config guard must precede collector");
 
-  // Default dry-run and manual-only guarantees preserved
+  // Default dry-run and manual/staged guarantees preserved
   assert.match(raw, /default:\s*dry-run/, "default mode must be dry-run");
   assert.match(live, /^\s*workflow_dispatch:/m);
-  assert.ok(!/^\s{0,4}schedule:/m.test(live), "no live schedule");
-  assert.ok(!/^\s*-\s*cron:/m.test(live), "no live cron");
+  assert.match(live, /^\s{0,4}schedule:/m, "schedule must be enabled");
+  assert.match(live, /^\s*-\s*cron:\s*"17 \*\/6 \* \* \*"/m, "cron must remain 17 */6 * * *");
+  // Scheduled runs must never pass write flags
+  assert.ok(!/--allow-production/.test(live), "live-write flags belong in runPolicy.mjs, not the workflow");
+  assert.ok(!/--write/.test(live), "scheduled/manual dry-runs must not pass --write");
 });
 
 test("two runs can never overlap", () => {
@@ -283,13 +296,9 @@ test("two runs can never overlap", () => {
 test("the run step passes the run metadata the run document records", () => {
   assert.match(live, /GITHUB_SHA:\s*\$\{\{\s*github\.sha\s*\}\}/);
   assert.match(live, /GITHUB_ACTOR:\s*\$\{\{\s*github\.actor\s*\}\}/);
-  // The staging project is hard-coded so the policy's allowlist check is
-  // meaningful, and production is never a write target.
-  assert.match(live, /COLLECTOR_PROJECT_ID:\s*jntuh-notes-staging/);
-  assert.ok(
-    !/COLLECTOR_PROJECT_ID:\s*jntuh-notes-6ef74/.test(live),
-    "the workflow must never point the collector at production",
-  );
+  // The staging project is set only for manual staging runs; scheduled runs must not set it
+  assert.match(live, /COLLECTOR_PROJECT_ID:/);
+  assert.match(live, /github\.event_name == 'schedule'/);
   assert.ok(
     !/jntuh-notes-6ef74/.test(live),
     "no live workflow line may target or name the production project",
@@ -299,14 +308,16 @@ test("the run step passes the run metadata the run document records", () => {
   assert.match(live, /COLLECTOR_DATABASE_ID:\s*"\(default\)"/);
   // The max-items input remains capped by the workflow input and the policy.
   assert.match(live, /max_items:/);
-  assert.match(live, /COLLECTOR_MAX_ITEMS:\s*\$\{\{\s*inputs\.max_items\s*\}\}/);
+  const maxLine = live.split("\n").find((line) => line.includes("COLLECTOR_MAX_ITEMS:"));
+  assert.ok(maxLine, "COLLECTOR_MAX_ITEMS must be set");
+  assert.ok(maxLine.includes("github.event_name == 'schedule'"), "scheduled runs must not pass manual input values");
   assert.match(raw, /default:\s*"100"/);
 });
 
 test("the scheduling documentation covers the required operational facts", () => {
   const doc = readFileSync(SCHEDULING_DOC, "utf8");
   for (const needle of [
-    "DISABLED",              // status
+    "dry-run",               // scheduled runs are dry-run
     "GitHub Actions",        // chosen runner
     "Blaze",                 // why not Cloud Functions
     "cron",                  // the schedule

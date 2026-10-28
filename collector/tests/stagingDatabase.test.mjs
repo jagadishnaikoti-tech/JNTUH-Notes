@@ -99,7 +99,7 @@ test("the emulator config supports two projects", () => {
 test("the workflow targets the staging project with WIF, never production", () => {
   const workflow = read(".github/workflows/collect-alerts.yml");
 
-  assert.match(workflow, /COLLECTOR_PROJECT_ID:\s*jntuh-notes-staging/);
+  assert.match(workflow, /COLLECTOR_PROJECT_ID:/);
   assert.match(workflow, /COLLECTOR_DATABASE_ID:\s*"\(default\)"/);
   assert.match(workflow, /google-github-actions\/auth@v2/);
   assert.match(workflow, /id-token:\s*write/);

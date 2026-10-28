@@ -1,8 +1,9 @@
 # Scheduling the collector
 
-**Status: the scheduler is implemented but DISABLED.** Nothing collects on a
-timer today. A collection run happens only when a human dispatches it, and a
-staging run additionally requires an owner-set repository variable. See
+**Status: scheduled dry-runs are ENABLED.** Automatic runs execute on a
+timer for read-only dry-runs only. A staging run still requires a human
+`workflow_dispatch` with `mode: stage` and an owner-set repository variable
+`COLLECTOR_STAGING_ENABLED=true`. See
 [Enabling it](#enabling-it-the-separately-approved-rollout) for the exact steps.
 
 The collector itself is described in [`README.md`](README.md). This document
@@ -13,9 +14,12 @@ something fails, and how to turn it off.
 
 ## What a scheduled run does — and does not do
 
-A run fetches the approved official listings, parses them and writes **only** to
-the admin-only staging collections in the **separate Firebase project**
-`jntuh-notes-staging`, in its `(default)` database:
+Scheduled runs (cron) are **read-only dry-runs only**. They fetch the approved
+official listings, parse them, and **never** write to Firestore, authenticate
+to Google Cloud, or pass write-enabling flags. Manual `workflow_dispatch`
+runs with `mode: stage` can write **only** to the admin-only staging collections
+in the **separate Firebase project** `jntuh-notes-staging`, in its `(default)`
+database:
 
 | Collection | Contents | Project |
 | ---------- | -------- | ------- |
@@ -66,11 +70,12 @@ that runs `node collector/scheduledRun.mjs`.
 - GitHub Actions is free for this repository, needs no new infrastructure, gives
   an auditable run history and can be disabled in one click.
 
-**Schedule (proposed, currently commented out):** every six hours —
-`17 */6 * * *` (00:17, 06:17, 12:17, 18:17 UTC). Two sources of static notices do
-not change hourly, so this is deliberately unhurried; the collector also enforces
-a 1.5 s minimum gap between HTTP requests, a 15 s per-request timeout, a bounded
-retry with backoff, an honest User-Agent and a hard `--max-items` cap.
+**Schedule:** every six hours — `17 */6 * * *` (00:17, 06:17, 12:17, 18:17 UTC).
+Scheduled runs are read-only dry-runs only; they skip staging guards and Google
+Cloud authentication. Two sources of static notices do not change hourly, so this
+is deliberately unhurried; the collector also enforces a 1.5 s minimum gap between
+HTTP requests, a 15 s per-request timeout, a bounded retry with backoff, an honest
+User-Agent and a hard `--max-items` cap.
 
 To change the cadence later, edit the single `cron:` line. A `concurrency` group
 (`cancel-in-progress: false`) makes sure two runs never overlap and re-plan the

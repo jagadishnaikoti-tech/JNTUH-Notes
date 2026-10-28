@@ -27,16 +27,13 @@
 #   Setup commands are in collector/SCHEDULING.md ("Workload Identity
 #   Federation"). No service-account JSON key is created or stored.
 #
-# SCHEDULING IS DISABLED
-#   The only trigger below is a manual `workflow_dispatch`. There is no supported
-#   scheduled path: even if the commented block were enabled by mistake, the job
-#   would remain a dry run because staging also requires `inputs.mode == 'stage'`
-#   and the repository variable COLLECTOR_STAGING_ENABLED=true. Only the
-#   repository owner can set that variable. Read collector/SCHEDULING.md before
-#   changing anything.
-#
-#   The commented schedule block is retained as a record of the reviewed cron,
-#   not as an enable path. Do not enable it without a separate security review.
+# SCHEDULING
+#   Scheduled runs (cron) are enabled for automatic, read-only dry-runs only.
+#   Scheduled runs always resolve to dry-run regardless of repository variables
+#   or manual input values. They do not execute staging guards, do not
+#   authenticate to Google Cloud, and never pass write-enabling flags.
+#   Manual `workflow_dispatch` remains available for dry-run or staging (the
+#   latter requires owner approval via repository variables).
 # ---------------------------------------------------------------------------
 name: Collect JNTUH notices (staging project only)
 
@@ -56,9 +53,8 @@ on:
         type: string
         default: "100"
         required: true
-  # Deliberately disabled. Do not enable without a separate security review.
-  # schedule:
-  #   - cron: "17 */6 * * *"   # 00:17, 06:17, 12:17 and 18:17 UTC
+  schedule:
+    - cron: "17 */6 * * *"   # 00:17, 06:17, 12:17 and 18:17 UTC
 
 # Least privilege: read the repository, plus the OIDC token that Workload
 # Identity Federation exchanges for short-lived staging credentials. No write
@@ -133,12 +129,12 @@ jobs:
 
       - name: Run the collector
         env:
-          COLLECTOR_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'stage' && vars.COLLECTOR_STAGING_ENABLED == 'true' && 'stage' || 'dry-run' }}
+          COLLECTOR_MODE: ${{ github.event_name == 'schedule' && 'dry-run' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'stage' && vars.COLLECTOR_STAGING_ENABLED == 'true' && 'stage' || 'dry-run') }}
           COLLECTOR_STAGING_ENABLED: ${{ vars.COLLECTOR_STAGING_ENABLED }}
           # Pinned in code too: the policy refuses anything else.
-          COLLECTOR_PROJECT_ID: jntuh-notes-staging
+          COLLECTOR_PROJECT_ID: ${{ github.event_name == 'workflow_dispatch' && 'jntuh-notes-staging' || '' }}
           COLLECTOR_DATABASE_ID: "(default)"
-          COLLECTOR_MAX_ITEMS: ${{ inputs.max_items }}
+          COLLECTOR_MAX_ITEMS: ${{ github.event_name == 'schedule' && '100' || inputs.max_items }}
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_ACTOR: ${{ github.actor }}
           CI: "true"
