@@ -20,6 +20,7 @@
     "deploy:rules:staging": "firebase --config firebase.staging.json deploy --only firestore:rules,firestore:indexes --project jntuh-notes-staging"
   },
   "dependencies": {
+    "@google-cloud/firestore": "^9.4.0",
     "firebase": "^11.10.0",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
